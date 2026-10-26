@@ -1,0 +1,10 @@
+{
+ "_note": "The listing photos the photo-facts step reads (src/photo/facts.py) and the pages show. They are the same six illustrative resident.co.nz design photos as ../room-*.jpg (sources in ../asset-sources.json), resized to upload inline, so they are NOT photos of these synthetic listings: the cards say Illustrative photo. L-0002's copy carries a VIRTUALLY STAGED stamp we added, the way staged photos are labelled on Australian listing sites, so the virtual-staging rule (docs/01 R-B1) has something to read. `set` names the qi.home gallery set the detail page shows with it.",
+ "photos": [
+  {"listing": "L-0001", "file": "L-0001-01.jpg", "from": "../room-2.jpg", "set": "room-2.jpg", "caption": "Kitchen and dining", "stamp": null, "source": "resident.co.nz design photo (illustrative)"},
+  {"listing": "L-0002", "file": "L-0002-01.jpg", "from": "../room-1.jpg", "set": "room-1.jpg", "caption": "Living room", "stamp": "VIRTUALLY STAGED", "source": "resident.co.nz design photo (illustrative); stamp added by HomeTruth for the demo"},
+  {"listing": "L-0003", "file": "L-0003-01.jpg", "from": "../room-3.jpg", "set": "room-3.jpg", "caption": "Lounge", "stamp": null, "source": "resident.co.nz design photo (illustrative)"},
+  {"listing": "L-0004", "file": "L-0004-01.jpg", "from": "../room-4.jpg", "set": "room-4.jpg", "caption": "Dining area", "stamp": null, "source": "resident.co.nz design photo (illustrative)"},
+  {"listing": "L-0005", "file": "L-0005-01.jpg", "from": "../room-5.jpg", "set": "room-5.jpg", "caption": "Living area", "stamp": null, "source": "resident.co.nz design photo (illustrative)"}
+ ]
+}

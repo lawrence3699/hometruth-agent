@@ -1,0 +1,104 @@
+{
+  "note": "Illustrative design photographs from two documented residential projects. Not Sydney listing photographs. No generated images or fabricated floor plans.",
+  "recentReference": "https://recent.design/i/helk5ox-resident",
+  "projects": [
+    {
+      "id": "home-1",
+      "name": "Waimataruru",
+      "sourcePage": "https://resident.co.nz/en/news/2024/10/capturing-waimataruru-with-kristina-pickford",
+      "photographyCredit": "Sam Hartnett",
+      "matchesExisting": [
+        "room-1.jpg",
+        "room-6.jpg"
+      ],
+      "floorplan": null,
+      "images": [
+        {
+          "file": "home-1-01.jpg",
+          "caption": "Timber living room and window seat",
+          "assetUrl": "https://resident.co.nz/media/uploads/2024_10/Untitled-1_0000s_0003__DSF0993web.jpg.1440x1440_q85_upscale.jpg",
+          "width": 900,
+          "height": 1440,
+          "sha256": "e1beec5390d58001dbbfabc062c056ccae4e4211d93e897385283f1382ed0079"
+        },
+        {
+          "file": "home-1-02.jpg",
+          "caption": "Timber lounge and black fireplace",
+          "assetUrl": "https://resident.co.nz/media/uploads/2024_10/Untitled-1_0000s_0000__DSF0692web_Kfc5voX.jpg.1440x1440_q85_upscale.jpg",
+          "width": 1440,
+          "height": 900,
+          "sha256": "c28a230480cb17f60286a452949cd41979dff7ec9b58942accb942df0f295652"
+        },
+        {
+          "file": "home-1-03.jpg",
+          "caption": "Window seat overlooking the sea",
+          "assetUrl": "https://resident.co.nz/media/uploads/2024_10/Untitled-1_0000s_0002_13.Sam_Hartnett.jpg.1440x1440_q85_upscale.jpg",
+          "width": 900,
+          "height": 1440,
+          "sha256": "7b20951fb6cf9c8fdb58a3a877d61e97ebf3ba2caf0c274ec79f8a207142a636"
+        },
+        {
+          "file": "home-1-04.jpg",
+          "caption": "Wide view of the same living room and coast",
+          "assetUrl": "https://resident.co.nz/media/uploads/2024_10/Untitled-1_0000s_0001_8.Sam_Hartnett.jpg.1440x1440_q85_upscale.jpg",
+          "width": 1440,
+          "height": 900,
+          "sha256": "c83d857bb3b93e21976e2cfb8a753d2725de2405be9c73b8e2bf63d7acd7b43f"
+        }
+      ]
+    },
+    {
+      "id": "home-2",
+      "name": "Mt Barker House",
+      "sourcePage": "https://resident.co.nz/en/news/2026/04/resident-project-mt-barker-house",
+      "architect": "Nuku Studio",
+      "photographyCredit": "Biddi Rowley",
+      "matchesExisting": [
+        "room-2.jpg"
+      ],
+      "floorplan": null,
+      "images": [
+        {
+          "file": "home-2-01.jpg",
+          "caption": "Open-plan kitchen and dining room",
+          "assetUrl": "https://resident.co.nz/media/uploads/2026_04/resident-mtbarkerhouse-6095.jpg.1440x1440_q85_upscale.jpg",
+          "width": 1113,
+          "height": 1440,
+          "sha256": "b23c4c8e3e9caa2eaa0c17fe65b36c390bb32af792168720637e16e9f7df84c2"
+        },
+        {
+          "file": "home-2-02.jpg",
+          "caption": "Kitchen island and timber cabinetry",
+          "assetUrl": "https://resident.co.nz/media/uploads/2026_04/resident-mtbarkerhouse-6138.jpg.1440x1440_q85_upscale.jpg",
+          "width": 1113,
+          "height": 1440,
+          "sha256": "41bc84a325d95c09ffdba39ec9fea69d450b85368a441a9396050594ae40df73"
+        },
+        {
+          "file": "home-2-03.jpg",
+          "caption": "Covered deck and garden",
+          "assetUrl": "https://resident.co.nz/media/uploads/2026_04/resident-mtbarkerhouse-6197.jpg.1440x1440_q85_upscale.jpg",
+          "width": 1440,
+          "height": 1029,
+          "sha256": "3aeff4816098cd40a8f7b459ae580f19fe146a98045ba7a4e51cb97860d9eec6"
+        },
+        {
+          "file": "home-2-04.jpg",
+          "caption": "Glazed entrance and interior bench",
+          "assetUrl": "https://resident.co.nz/media/uploads/2026_04/resident-mtbarkerhouse-6173.jpg.1440x1440_q85_upscale.jpg",
+          "width": 1113,
+          "height": 1440,
+          "sha256": "2ff991b87383044d840ab8d85bd76e0bf58b547dbe3f777cc4d5e4b7779057cd"
+        },
+        {
+          "file": "home-2-05.jpg",
+          "caption": "The two connected pavilions in their mountain setting",
+          "assetUrl": "https://resident.co.nz/media/uploads/2026_04/resident-mtbarkerhouse-6206_rbwgbMS.jpg.1440x1440_q85_upscale.jpg",
+          "width": 1440,
+          "height": 1029,
+          "sha256": "5039792b862520608edc1dad39dfca3da45fe11e74af80890e83e1760e4fe31a"
+        }
+      ]
+    }
+  ]
+}

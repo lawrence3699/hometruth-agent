@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HomeTruth Card Flow</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="is-loading">
+<div id="loader"><i></i></div>
+
+<div id="wallWrap" aria-hidden="true"><div id="wall"><div id="scanLine"></div></div></div>
+<div id="veil" aria-hidden="true"></div>
+<div id="veil2" aria-hidden="true"></div>
+<div id="grid" aria-hidden="true"></div>
+<svg id="sprite" width="0" height="0" aria-hidden="true"><defs></defs></svg>
+
+<header class="hud tl"><b>HOMETRUTH</b><span class="hud-sub">RENTAL CHECKER</span></header>
+<nav class="hud tr">
+  <button data-go="brief">BRIEF</button>
+  <button data-go="picks" disabled>PICKS</button>
+  <button data-go="compare" disabled>COMPARE</button>
+  <button id="soundBtn" title="Read narration aloud">SOUND[<span>/</span>]</button>
+  <button id="demoBtn" title="Play the demo script">DEMO[<span>&#9654;</span>]</button>
+</nav>
+<div class="hud bl"><span id="clock">SYD --:--</span><span id="countHud">50 LISTINGS · 6 SOURCES</span></div>
+<div class="hud br"><span id="xy">0000 X&nbsp;&nbsp;0000 Y</span></div>
+
+<main>
+  <section id="story">
+    <div class="stage">
+      <div id="brief">
+        <div class="swap">
+          <h1 id="headline">
+            <span class="ln"><span class="w">Tell</span> <span class="w">me</span> <span class="w">the</span> <span class="w">home</span></span>
+            <span class="ln"><span class="w">you</span> <span class="w hl">need.</span></span>
+          </h1>
+          <div id="tally">
+            <div class="t-left">
+              <div class="t-row">
+                <div class="t"><b id="tChecked">0</b><span>CHECKED</span></div>
+                <i class="t-arrow">&rarr;</i>
+                <div class="t"><b id="tFit">0</b><span>FIT</span></div>
+                <i class="t-arrow">&rarr;</i>
+                <div class="t best"><b id="tBest">&ndash;</b><span>BEST</span></div>
+              </div>
+              <div id="reasons"></div>
+            </div>
+            <div class="t-right">
+              <div class="src-h"><span>ZETARIS QUERY</span><span id="srcCount">0 / 6</span></div>
+              <ul id="sources"></ul>
+            </div>
+          </div>
+        </div>
+        <div id="needsSlot"><div id="needs"></div></div>
+        <div id="aiSlot"><div id="ai"><i class="orb"></i><p id="aiText"></p></div></div>
+        <div id="askSlot">
+          <div id="askWrap">
+            <div id="you"></div>
+            <form id="ask" autocomplete="off">
+              <input id="q" type="text" placeholder="Describe the place you need…" aria-label="Describe the place you need">
+              <button type="button" id="micBtn" class="mic" title="Speak" hidden>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+              </button>
+              <button type="submit" class="send" title="Send">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+            </form>
+            <div id="suggest"></div>
+          </div>
+        </div>
+      </div>
+      <div id="flow"></div>
+      <aside id="detail"></aside>
+      <div id="rail"></div>
+      <div id="scrollHint">SCROLL<i></i></div>
+    </div>
+  </section>
+  <section id="compare"></section>
+</main>
+
+<div id="topNeeds"></div>
+<div id="dock"></div>
+
+<script src="data.js"></script>
+<script src="plan.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

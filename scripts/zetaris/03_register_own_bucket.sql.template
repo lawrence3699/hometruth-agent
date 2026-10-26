@@ -1,0 +1,33 @@
+-- 模板：把我们自己桶里的 CSV 注册进 Zetaris。复制成 .sql 后把 <...> 换掉再跑。
+-- 桶名不能带点号（例如 hometruth-data 可以，hometruth.data 不行）。
+-- 区域端点：ap-southeast-2（悉尼）→ s3.ap-southeast-2.amazonaws.com。
+-- 注意：凭据会原样存进 Zetaris，所以只用"只读、只能看这一个桶"的专用密钥，不要用主账号密钥。
+
+CREATE LIGHTNING DATABASE hometruth DESCRIBE BY "HomeTruth synthetic listings and public tables";
+
+-- 方式 A：私有桶（推荐）。
+CREATE LIGHTNING FILESTORE TABLE listings FROM hometruth FORMAT CSV OPTIONS (
+  path "s3a://<桶名>/listings.csv",
+  awsAccessKeyId "<只读密钥 ID>",
+  awsSecretAccessKey "<只读密钥 secret>",
+  header "true",
+  inferSchema "true",
+  delimiter ",",
+  useS3PathStyleAccess "true",
+  s3Endpoint "s3.<区域>.amazonaws.com"
+);
+
+-- 方式 B：公开读的桶（不用凭据；只放合成数据和公开数据，别放任何真人信息）。
+-- CREATE LIGHTNING FILESTORE TABLE listings FROM hometruth FORMAT CSV OPTIONS (
+--   path "s3a://<桶名>/listings.csv",
+--   header "true",
+--   inferSchema "true",
+--   isS3BucketPublic "true",
+--   useS3PathStyleAccess "true",
+--   s3Endpoint "s3.<区域>.amazonaws.com"
+-- );
+
+-- 文件大一点（几万行以上）就缓存一次，演示时查询才快：
+-- CACHE LIGHTNING FILESTORE TABLE hometruth.listings;
+
+SELECT * FROM hometruth.listings LIMIT 10;

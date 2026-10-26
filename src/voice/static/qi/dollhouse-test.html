@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dollhouse test · HomeTruth</title>
+<link rel="stylesheet" href="/static/qi/styles.css?v=6">
+<link rel="stylesheet" href="/static/qi/dollhouse.css?v=1">
+<style>
+  body{margin:0;padding:24px;max-width:960px;margin:0 auto;background:#fff}
+  h1{font-size:18px;margin:0 0 4px}
+  .meta{font-size:13px;color:#7e8594;margin-bottom:14px}
+  .err{color:#b42318;font-size:13px}
+</style>
+</head>
+<body>
+<h1 id="title">Dollhouse test</h1>
+<div class="meta" id="meta">Loading /api/listings…</div>
+<div id="mount"></div>
+<script type="module" src="/static/qi/dollhouse.js?v=1"></script>
+<script type="module">
+  // 独立试页：?listing=L-D17153470，自己 fetch /api/listings 找到 home，按契约挂载；截图脚本用 window.__dollhouse / __dollhouse_ready。
+  const q = new URLSearchParams(location.search);
+  const want = q.get('listing') || 'L-D17153470';
+  const meta = document.getElementById('meta');
+  const ready = new Promise((res) => (window.HT_DOLLHOUSE ? res() : document.addEventListener('ht-dollhouse-ready', () => res(), { once: true })));
+  (async () => {
+    try {
+      const r = await fetch('/api/listings');
+      const { listings } = await r.json();
+      const home = listings.find((L) => L.id === want);
+      if (!home) throw new Error(`listing ${want} not in /api/listings`);
+      document.getElementById('title').textContent = `Dollhouse · ${home.unit ? home.unit + '/' : ''}${home.street || ''} ${home.suburb || ''} (${home.id})`;
+      await ready;
+      const ok = await window.HT_DOLLHOUSE.available(home);
+      meta.textContent = ok ? 'plan3d.json found · mounting…' : 'No plan3d.json for this home (run python3 src/photo/plan3d.py build)';
+      if (!ok) { window.__dollhouse_ready = false; return; }
+      const handle = await window.HT_DOLLHOUSE.mount(document.getElementById('mount'), home);
+      window.__dollhouse = handle;
+      window.__dollhouse_ready = true;
+      const p = handle.plan;
+      meta.textContent = `${p.rooms.length} rooms · ${p.photos.filter((x) => x.room_id != null).length}/${p.photos.length} photos placed · ${p.m_per_px} m/px (${p.scale_source}) · north ${p.north_deg == null ? 'unknown' : p.north_deg + '°'} · rooms by ${p.model} via ${p.route}`;
+    } catch (e) {
+      meta.innerHTML = `<span class="err">${e.message}</span>`;
+      window.__dollhouse_error = e.message;
+      window.__dollhouse_ready = false;
+    }
+  })();
+</script>
+</body>
+</html>

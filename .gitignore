@@ -1,0 +1,48 @@
+# ---- 密钥和本机配置：永远不进仓库 ----
+.env
+.env.*
+!.env.example
+*tunnel*.json
+*.pem
+
+# ---- 运行产物：日志、模型调用记录、语音缓存、录音、截图、会话状态 ----
+# runs/ 下只保留：说明、演示要用的事实文件（照片 / 户型图 / 3D plan / 风格匹配，都是模型读出来的小 jsonl）、回归基线
+runs/*
+!runs/README.md
+!runs/summaries/
+!runs/photo_facts.jsonl
+!runs/floorplan_facts.jsonl
+!runs/plan3d_facts.jsonl
+!runs/style_facts.jsonl
+!runs/voice_regression/
+runs/voice_regression/*
+!runs/voice_regression/baseline_*.jsonl
+
+# ---- 数据 ----
+# 合成数据的中间产物不进；真房源的原始抓取（Domain 条款）和挂牌照片（中介公司版权）只在本机；户型图分房结果 plan3d.json 很小，留着
+data/materials/*
+data/truth/*
+data/labels/*
+data/real/domain/*
+data/real/photos/**/*.jpg
+data/real/photos/**/*.jpeg
+data/real/photos/**/*.png
+data/real/photos/**/*.webp
+data/real/photos/**/*.gif
+!data/**/README.md
+
+# ---- 私密文档：会议转写（队友原话）、真实看房报告样本 ----
+docs/meeting/*转写*
+docs/reference/看房报告样本_*
+
+# ---- 大文件 ----
+deliverables/video/*.mp4
+deliverables/video/*.mov
+*.tgz
+
+# ---- 环境 ----
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store

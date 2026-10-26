@@ -1,0 +1,30 @@
+/* Dollhouse（docs/10 第 4 节）：户型图立起来的近似三维视图。独立 ES module dollhouse.js 自己建 DOM，这里只管样式。 */
+.ht-dollhouse{position:relative;width:100%;font-family:'F37 Bolton',Helvetica,Arial,sans-serif;color:var(--ink,#1e293d)}
+.ht-dollhouse-stage{position:relative;width:100%;height:60vw;max-height:540px;min-height:280px;border-radius:14px;overflow:hidden;background:#f6f7f8;border:1px solid var(--line,#e5e7eb)}
+.ht-dollhouse-canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+.ht-dollhouse-badge{position:absolute;left:12px;top:12px;max-width:min(78%,440px);padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.88);color:#4b5563;font-size:12px;line-height:16px;pointer-events:none;box-shadow:0 1px 4px rgba(30,41,61,.08)}
+.ht-dollhouse-hint{position:absolute;left:12px;bottom:10px;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,.75);color:#7e8594;font-size:11px;line-height:14px;pointer-events:none}
+.ht-dollhouse-controls{position:absolute;right:12px;top:12px;display:flex;gap:6px}
+.ht-dollhouse-btn{min-width:36px;height:32px;padding:0 10px;border:1px solid var(--line,#e5e7eb);border-radius:8px;background:rgba(255,255,255,.92);color:var(--ink,#1e293d);font:inherit;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 1px 3px rgba(30,41,61,.08)}
+.ht-dollhouse-btn:hover{background:#fff;border-color:#c7ccd4}
+.ht-dollhouse-btn:focus-visible{outline:2px solid #0d913e;outline-offset:1px}
+.ht-dollhouse-sun{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;font-size:13px;line-height:18px}
+.ht-dollhouse-seasons{display:flex;gap:6px}
+.ht-dollhouse-chip{height:28px;padding:0 10px;border:1px solid var(--line,#e5e7eb);border-radius:14px;background:#fff;color:var(--ink,#1e293d);font:inherit;font-size:12px;cursor:pointer}
+.ht-dollhouse-chip.is-on{background:#1e293d;border-color:#1e293d;color:#fff}
+.ht-dollhouse-slider{flex:1 1 160px;min-width:120px;accent-color:#1e293d}
+.ht-dollhouse-sunlabel{color:#4b5563;font-variant-numeric:tabular-nums}
+.ht-dollhouse .is-muted{color:var(--muted,#7e8594)}
+.ht-dollhouse-photos{margin-top:12px;font-size:13px;line-height:18px}
+.ht-dollhouse-photos-head{margin-bottom:6px}
+.ht-dollhouse-strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.ht-dollhouse-thumb{flex:0 0 auto;width:150px;margin:0}
+.ht-dollhouse-thumb img{display:block;width:150px;height:100px;object-fit:cover;border-radius:8px;cursor:zoom-in;border:1px solid var(--line,#e5e7eb)}
+.ht-dollhouse-thumb figcaption{margin-top:3px;font-size:11px;line-height:14px;color:var(--muted,#7e8594);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ht-dollhouse-foot{margin-top:6px;font-size:11px;line-height:14px;color:var(--muted,#7e8594)}
+.ht-dollhouse-zoom{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:rgba(30,41,61,.82);cursor:zoom-out;z-index:3}
+.ht-dollhouse-zoom.is-open{display:flex}
+.ht-dollhouse-zoom img{max-width:92%;max-height:84%;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.ht-dollhouse-zoom-cap{color:#fff;font-size:13px}
+@media(max-width:640px){.ht-dollhouse-stage{height:60vw;min-height:220px}.ht-dollhouse-badge{font-size:11px;line-height:14px;max-width:70%}.ht-dollhouse-hint{display:none}.ht-dollhouse-thumb{width:120px}.ht-dollhouse-thumb img{width:120px;height:80px}}
+@media(prefers-reduced-motion:reduce){.ht-dollhouse-btn,.ht-dollhouse-chip{transition:none}}

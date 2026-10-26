@@ -1,0 +1,41 @@
+/* Expanded REA-equivalent controls inside the approved Domain/Augen panel. */
+.rental-filter-dialog{width:620px;height:calc(100svh - 36px);max-height:calc(100svh - 36px);min-height:0;padding:0;overflow:hidden}
+#filters-form{height:100%;display:flex;flex-direction:column}
+.rental-header{display:flex;align-items:center;justify-content:space-between;padding:27px 32px 24px;gap:20px;flex-shrink:0;border-bottom:1px solid #eef0f2}
+.rental-header h2{font-size:24px;line-height:32px;font-weight:400;margin:0}
+.rental-scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:0 32px 25px;scrollbar-gutter:stable}
+.rental-section{padding:23px 0;border-bottom:1px solid #e7e9ed}
+.rental-section:last-child{border-bottom:0}
+.rental-section h3{font-size:18px;line-height:28px;font-weight:400;margin:0 0 14px}
+.filter-field{display:flex;flex-direction:column;gap:8px;min-width:0}
+.filter-field-label{font-size:14px;line-height:20px;color:#798390}
+.filter-field input,.filter-field select{font-family:inherit;font-size:16px;line-height:24px;font-weight:400;color:#233046;background:#fff;border:1px solid #d2d8df;border-radius:8px;width:100%;min-width:0;min-height:45px;padding:9px 12px;transition:border-color .2s,box-shadow .2s}
+.filter-field input:focus,.filter-field select:focus{border-color:#0e963e;outline:none;box-shadow:0 0 0 2px #0e963e10}
+.filter-field input::placeholder{color:#a0a7b1}
+.filter-pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.rental-check{display:flex;align-items:center;gap:12px;font-size:16px;line-height:24px;padding:9px 0;cursor:pointer;min-height:43px}
+.rental-check input{width:18px;height:18px;min-width:18px;accent-color:#0a9c38;margin:0}
+.rental-section>.rental-check:last-child{padding-bottom:0}
+.rental-section .filter-field+.rental-check{margin-top:8px;color:#626f7e}
+.property-type-options{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+.property-type-options .rental-check{border:1px solid #d5dbe3;padding:10px 13px;border-radius:8px}
+.property-type-options .rental-check:has(input:checked){border-color:#189746;background:#f0f7ec}
+.property-type-options input{width:17px;height:17px;min-width:17px}
+.filter-accordion{padding:0}
+.filter-accordion summary{display:flex;align-items:center;justify-content:space-between;gap:20px;list-style:none;cursor:pointer;padding:21px 0;font-size:18px;line-height:28px;font-weight:400}
+.filter-accordion summary::-webkit-details-marker{display:none}
+.feature-count{width:25px;height:25px;display:grid;place-items:center;font-size:14px;line-height:20px;color:#79858c;background:#f3f5f5;border-radius:50%;transition:background .2s,color .2s}
+.filter-accordion[open] .feature-count{background:#e6efe3;color:#497446}
+.feature-options{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;padding:0 0 18px;animation:enter .2s ease}
+.feature-options .rental-check{font-size:16px;line-height:24px;align-items:flex-start;padding:9px 0}
+.feature-options input{margin-top:3px}
+.rental-footer{flex-shrink:0;background:#fff;border-top:1px solid #e7e9ed;padding:18px 32px 23px;box-shadow:0 -10px 30px #17222d03}
+.rental-actions{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.filter-clear{font-size:16px;line-height:24px;font-weight:700;white-space:nowrap;padding:11px 4px;color:#62707e}
+.filter-apply{width:auto;min-width:215px;justify-content:center;margin:0;padding:12px 23px;font-size:16px;line-height:24px}
+.rental-error{font-size:14px;line-height:20px;color:#b44032;margin:0 0 12px}.rental-error:empty{display:none}
+#filters-open{position:relative}#filters-open[data-count]:not([data-count=""])::after{content:attr(data-count);position:absolute;right:1px;top:0;font-size:9px;line-height:14px;min-width:14px;height:14px;padding:0 3px;color:#fff;background:#1b823a;border-radius:10px}
+@media(max-width:760px){.rental-filter-dialog{width:calc(100% - 20px);height:calc(100svh - 20px);max-height:calc(100svh - 20px)}.rental-header{padding:21px 23px 19px}.rental-scroll{padding:0 23px 20px}.rental-footer{padding:15px 23px 19px}.rental-section{padding:20px 0}.filter-accordion{padding:0}.filter-pair{gap:10px}.filter-field-label{font-size:12px;line-height:18px}.rental-check{gap:9px}.property-type-options{gap:8px}.property-type-options .rental-check{padding:10px;font-size:14px;line-height:20px}.feature-options{grid-template-columns:1fr}.filter-apply{min-width:180px}.rental-actions{gap:16px}}
+@media(prefers-reduced-motion:reduce){.feature-options{animation:none}}
+.filter-field-label{font-size:14px;line-height:18px}
+@media(max-width:760px){.filter-field-label{font-size:14px;line-height:18px}.property-type-options .rental-check{font-size:16px;line-height:24px}}

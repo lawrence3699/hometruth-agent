@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HomeTruth · Voice</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<!-- ui.js mounts the shared page into #app (same look as 8630) and moves #topbar-extra and #dock into place. -->
+<div id="app"></div>
+<div id="topbar-extra"><span class="conn" id="conn" data-state="idle"><i></i><span id="conn-text">Voice line not connected</span></span></div>
+
+<div class="dock" id="dock">
+  <div class="dock-top">
+    <span class="voice" id="voice" data-phase="idle" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></span>
+    <span class="phase" id="phase">Not connected</span>
+    <span class="you" id="transcript"></span>
+  </div>
+  <p class="caption" id="caption" aria-live="polite"></p>
+  <form class="composer" id="composer" autocomplete="off">
+    <button type="button" id="connect" class="btn primary" title="Connect the voice line"><svg class="ico"><use href="#i-play"/></svg><span id="connect-label">Start</span></button>
+    <button type="button" id="mic" class="btn on" aria-pressed="true" title="Microphone on or off" hidden><svg class="ico"><use href="#i-mic"/></svg><span id="mic-label">Mic on</span></button>
+    <input id="text" type="text" placeholder="Describe the place you need…" aria-label="Describe the place you need">
+    <button type="submit" id="send" class="btn icon" title="Send"><svg class="ico"><use href="#i-send"/></svg><span class="sr">Send</span></button>
+    <button type="button" id="stop" class="btn ghost" title="Stop speaking (Esc)" disabled><svg class="ico"><use href="#i-stop"/></svg>Stop</button>
+  </form>
+  <p class="dock-hint" id="hint">Press <b>Start</b> to connect the voice line, then just talk, or type here. Chrome needs this one click before it can play sound.</p>
+  <div class="dock-foot">
+    <button type="button" id="reset" class="link" hidden>New search</button>
+    <button type="button" id="leave" class="link" hidden>Leave</button>
+    <span class="note" id="note"></span>
+    <span class="metrics" id="metrics"></span>
+  </div>
+</div>
+<audio id="bot-audio" autoplay></audio>
+
+<script src="/static/ui.js"></script>
+<script type="module" src="/static/pipecat.js?v=2"></script>
+</body>
+</html>

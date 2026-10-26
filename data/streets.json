@@ -1,0 +1,14 @@
+{
+  "_note": "虚构街名表。生成器只能从这里选街名；开工前用 NSW 地址数据核一遍，确保这些街名在 Kensington/Kingsford/Zetland/Haymarket/Randwick/Mascot 都不存在。",
+  "streets": [
+    "Alder Lane", "Birchwood Street", "Caldera Avenue", "Dunmore Row", "Ellery Place",
+    "Fenwick Street", "Glasshouse Lane", "Harrow Crescent", "Ingram Street", "Juniper Avenue",
+    "Kestrel Lane", "Larkspur Street", "Marlow Place", "Norwood Lane", "Orrin Street",
+    "Pemberton Row", "Quarry Lane", "Rosslyn Avenue", "Saltbush Street", "Thornbury Lane"
+  ],
+  "suburbs": [
+    {"suburb": "Kensington", "postcode": "2033"}, {"suburb": "Kingsford", "postcode": "2032"},
+    {"suburb": "Zetland", "postcode": "2017"}, {"suburb": "Haymarket", "postcode": "2000"},
+    {"suburb": "Randwick", "postcode": "2031"}, {"suburb": "Mascot", "postcode": "2020"}
+  ]
+}

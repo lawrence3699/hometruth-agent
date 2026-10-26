@@ -1,0 +1,21 @@
+/* style-match.css — the "Looks like this" tab, the small panel above the grid and the Style badge on cards (style-match.js).
+   Follows the qi shell: the page font via inherit, --ink / --muted / --line / --subtle from styles.css, the inferred amber (--inf) from
+   hometruth.css, because a style match is always an inference. */
+.ht-style-button.has-result{color:var(--inf,#9a5800)}
+.ht-style-button.has-result::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px}
+.ht-style-input{display:none}
+.ht-style-panel{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:-14px 0 24px;padding:10px 14px;border:1px solid var(--line,#e5e7eb);border-radius:12px;background:var(--subtle,#f6f7f8);font-size:14px;line-height:20px;color:var(--ink,#1e293d)}
+.ht-style-panel[hidden]{display:none}
+.ht-style-panel b{font-weight:700;margin-right:2px}
+.ht-style-chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:var(--inf-tint,#fbefd8);color:var(--inf,#9a5800);font-size:12px;line-height:18px;font-weight:700;white-space:nowrap}
+.ht-style-chip.word{background:#fff;color:var(--ink-2,#4b5563);border:1px solid var(--line,#e5e7eb);font-weight:400}
+.ht-style-soft{flex-basis:100%;color:var(--muted,#7e8594);font-size:12px;line-height:18px}
+.ht-style-panel .ht-style-clear{font-size:12px;line-height:18px;padding:3px 10px;border-radius:6px;color:var(--ink-2,#4b5563);background:#fff;border:1px solid var(--line,#e5e7eb);white-space:nowrap}
+.ht-style-panel .ht-style-clear:hover{color:var(--accent,#0d913e);border-color:var(--accent,#0d913e)}
+.ht-style-dot{width:8px;height:8px;border-radius:50%;background:var(--inf,#9a5800);animation:ht-style-pulse 1s ease-in-out infinite}
+@keyframes ht-style-pulse{0%,100%{opacity:.25}50%{opacity:1}}
+.ht-style-error{color:var(--bad,#be3227)}
+.ht-style-badge{position:absolute;left:9px;bottom:9px;z-index:2;display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;background:#fffffff0;color:var(--inf,#9a5800);font-size:12px;line-height:18px;font-weight:700;white-space:nowrap;box-shadow:0 1px 4px #1f293714;cursor:help}
+.ht-style-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px}
+@media(max-width:760px){.collection-controls{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}.collection-controls::-webkit-scrollbar{display:none}.ht-style-panel{margin:-10px 0 18px;padding:8px 10px;font-size:12px;line-height:18px}.ht-style-chip{height:22px;padding:0 8px;font-size:11px}.ht-style-badge{left:7px;bottom:7px;height:20px;font-size:11px;padding:0 7px}}
+@media(prefers-reduced-motion:reduce){.ht-style-dot{animation:none;opacity:.8}}

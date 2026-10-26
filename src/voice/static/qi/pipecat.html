@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>HomeTruth · Voice</title>
+<link rel="preload" href="/static/qi/assets/domain/F37Bolton-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/qi/assets/domain/F37Bolton-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/qi/styles.css?v=6">
+<link rel="stylesheet" href="/static/qi/conversation-panel.css?v=6">
+<link rel="stylesheet" href="/static/qi/search-workspace.css?v=6">
+<link rel="stylesheet" href="/static/qi/rental-filters.css?v=6">
+<link rel="stylesheet" href="/static/qi/property-detail.css?v=8">
+<link rel="stylesheet" href="/static/qi/collection-motion.css?v=6">
+<link rel="stylesheet" href="/static/qi/home-compare.css?v=6">
+<link rel="stylesheet" href="/static/qi/hometruth.css?v=10">
+<link rel="stylesheet" href="/static/qi/style-match.css?v=1">
+<link rel="stylesheet" href="/static/qi/lucian-effects.css?v=1">
+<link rel="stylesheet" href="/static/qi/dollhouse.css?v=1">
+</head>
+<body>
+<!-- ui-qi.js mounts the page into #app (same look as 8630) and moves #topbar-extra and #dock into place; pipecat.js (shared with
+     the classic page at /classic) connects the voice line over WebRTC and hands the server's events to the renderer. -->
+<div id="app"></div>
+<div id="topbar-extra"><span class="conn" id="conn" data-state="idle"><i></i><span id="conn-text">Voice line not connected</span></span></div>
+
+<div id="dock">
+  <div id="conversation" class="conversation" hidden>
+    <div class="ht-line"><span class="match-status" id="phase">Not connected</span><span class="you" id="transcript"></span></div>
+    <p class="conversation-question" id="caption" aria-live="polite"></p>
+  </div>
+  <div class="voice-intro">
+    <div class="voice-button" id="voice" data-mode="idle" data-phase="idle">
+      <span id="voice-orb-host" aria-hidden="true"></span>
+      <button type="button" id="connect" title="Connect the voice line"><span id="connect-label">Start</span></button>
+      <button type="button" id="mic" class="on" aria-pressed="true" title="Microphone on or off" hidden><span id="mic-label">Mic on</span></button>
+    </div>
+  </div>
+  <form class="search-box" id="composer" autocomplete="off">
+    <button type="button" id="filters-open" class="filter-toggle" aria-label="Open filters"><svg aria-hidden="true"><use href="#i-filter"/></svg></button>
+    <label class="sr-only" for="text">Describe the place you need</label>
+    <input id="text" type="text" maxlength="280" placeholder="Or type what you need…">
+    <button type="submit" id="send" class="send-button" aria-label="Send"><svg><use href="#i-arrow"/></svg></button>
+  </form>
+  <div id="search-criteria" class="criteria-bar needs" hidden></div>
+  <div class="suggestions" id="suggestions"><button type="button" data-prompt="Two bedrooms near Central, under 900 a week, I have a cat, moving mid November">Try “Two bedrooms near Central, under 900 a week, I have a cat, moving mid November” <span>↗</span></button></div>
+  <p class="dock-hint" id="hint">Press <b>Start</b> to connect the voice line, then just talk, or type here. Chrome needs this one click before it can play sound.</p>
+  <div class="dock-foot">
+    <button type="button" id="stop" class="text-button" title="Stop speaking (Esc)" disabled>Stop</button>
+    <button type="button" id="reset" class="text-button" hidden>New search</button>
+    <button type="button" id="leave" class="text-button" hidden>Leave</button>
+    <span class="note" id="note"></span>
+  </div>
+</div>
+<audio id="bot-audio" autoplay></audio>
+
+<script type="module" src="/static/qi/ui-qi.js?v=13"></script>
+<script type="module" src="/static/pipecat.js?v=3"></script>
+<script type="module" src="/static/qi/style-match.js?v=1"></script>
+<script type="module" src="/static/qi/lucian-effects.js?v=2"></script>
+<script type="module" src="/static/qi/dollhouse.js?v=1"></script>
+</body>
+</html>

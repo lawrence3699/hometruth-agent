@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HomeTruth</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<!-- ui.js mounts the shared page (listing wall, top bar with the status legend, hero, analysing view, shortlist, side panel) into #app
+     and moves this page's own pieces (#dock) into place. -->
+<div id="app"></div>
+
+<div class="dock" id="dock">
+  <div class="dock-top">
+    <span class="voice" id="voice" data-phase="idle" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></span>
+    <span class="phase" id="phase">Ready</span>
+    <span class="you" id="transcript"></span>
+  </div>
+  <p class="caption" id="caption" aria-live="polite"></p>
+  <form class="composer" id="composer" autocomplete="off">
+    <button type="button" id="mic" class="btn" aria-pressed="false" title="Talk instead of typing (Chrome)"><svg class="ico"><use href="#i-mic"/></svg><span id="mic-label">Talk</span></button>
+    <input id="text" type="text" placeholder="Describe the place you need…" aria-label="Describe the place you need">
+    <button type="submit" id="send" class="btn primary icon" title="Send"><svg class="ico"><use href="#i-send"/></svg><span class="sr">Send</span></button>
+    <button type="button" id="stop" class="btn ghost" title="Stop speaking (Esc)"><svg class="ico"><use href="#i-stop"/></svg>Stop</button>
+  </form>
+  <div class="dock-foot">
+    <label class="opt" title="With headphones on there is no echo, so it reacts to your voice sooner"><input type="checkbox" id="headphones">Headphones</label>
+    <label class="opt" title="After a question, put the cursor back in the box"><input type="checkbox" id="autolisten" checked>Auto-listen</label>
+    <span class="meter" id="meter" title="Mic level · red mark = interrupt threshold" hidden><i></i><b></b></span>
+    <button type="button" id="reset" class="link">New search</button>
+    <span class="note" id="note"></span>
+    <span class="metrics" id="metrics"></span>
+  </div>
+</div>
+
+<script src="/static/ui.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
