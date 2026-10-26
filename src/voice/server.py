@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from typing import Optional
 import mimetypes
 import os
 import sys
@@ -117,6 +118,7 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(u.query)
             return self._json(200, {"tts_backend": tts.backend(), "voice": tts.voice_label(), "voice_id": tts.voice_name(), "server_time": time.time(),
                                     "narration": "llm" if narrator.enabled() else "template",
+                                    "deployed": deployed_info(),  # which commit is live (the box's auto-deploy writes deploy_info.json; null on a dev machine)
                                     "memory": hello_view((q.get("renter") or [""])[0])})
         if u.path == "/api/style":  # ?renter=<id>：这位租客存的风格匹配（src/photo/style.py），没有就 profile null
             return self._json(*style_match.api_get(urllib.parse.parse_qs(u.query)))
@@ -213,6 +215,16 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         log({"kind": "turn", "session": sess.id, "text": (body.get("text") or "")[:200], "interrupted": bool((body.get("interrupted") or {}).get("active")),
              "first_event_ms": first_ms, "events": n_events, "total_ms": round((time.time() - t0) * 1000), "status": status})
+
+
+def deployed_info() -> Optional[dict]:
+    """deploy_info.json at the project root = {sha, time, by}, written by infra/windows/auto_deploy.ps1 after a successful deploy; None elsewhere."""
+    p = ROOT / "deploy_info.json"
+    try:
+        d = json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+    except (OSError, ValueError):
+        return None
+    return {"sha": str(d.get("sha") or "")[:40], "time": str(d.get("time") or "")[:40], "by": str(d.get("by") or "")[:20]} if isinstance(d, dict) else None
 
 
 def main() -> None:

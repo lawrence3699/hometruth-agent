@@ -54,6 +54,16 @@ window.HTUI = (() => {
   const pill = (st) => `<span class="tag status dot ${esc(st)}">${esc(STATUS[st] || st)}</span>`;
   const nextTag = (n) => (NEXT_TEXT[n] ? tag(n, NEXT_TEXT[n]) : '');
   const TICK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.4 8.3 2.4 2.4 4.8-5.1"/></svg>';
+  // one row of icons instead of labelled fields, like a listing site's bed / bath / car line; the words stay for screen readers and tooltips
+  const specRow = (L, { rent = true, date = true, cls = '' } = {}) => `<span class="nt-specs${cls ? ' ' + cls : ''}" role="list">${[
+    rent ? ['coin', `${money(L.rent)}/wk`, 'Rent per week'] : null,
+    ['bed', L.bedrooms === 0 ? 'Studio' : L.bedrooms, 'Bedrooms'],
+    ['bath', L.bathrooms, 'Bathrooms'],
+    L.parking != null ? ['car', L.parking, 'Car spaces'] : null,
+    date && L.available_from ? ['cal', fmtDate(L.available_from), 'Available from'] : null,
+  ].filter(Boolean).map(([ic, v, t]) => `<span role="listitem" title="${t}">${icon(ic)}<span class="sr-only">${t}: </span>${esc(v)}</span>`).join('')}</span>`;
+  const SRC_ICON = { Listing: 'doc', Photo: 'photo', 'Floor plan': 'plan', 'By-laws': 'doc', 'Agent reply': 'chat', Document: 'doc', 'Rent data': 'chart', 'Transit table': 'train', 'Sun geometry': 'sparkle', 'Distance estimate': 'pin' };
+  const srcIcons = (names) => names.map((n) => `<span class="si" title="${esc(n)}">${icon(SRC_ICON[n] || 'doc')}<span class="sr-only">${esc(n)}</span></span>`).join('');
 
   const SPRITE = `<svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M14.6 9.6c-.3-.9-1.3-1.5-2.6-1.5-1.5 0-2.6.8-2.6 1.8 0 2.4 5.2 1.1 5.2 3.6 0 1-1.1 1.9-2.6 1.9-1.4 0-2.4-.7-2.7-1.6"/></symbol>
@@ -395,12 +405,7 @@ window.HTUI = (() => {
         <div class="nt-place-in">
           <div class="nt-place-icon">#${rec.rank}</div>
           <h3 class="nt-place-title">${titleHTML}</h3><p class="nt-place-sub">${esc(suburb)}${C.postcode ? ' ' + esc(C.postcode) : ''}</p>
-          <div class="nt-props">
-            <div class="nt-prop"><span class="k">${icon('coin')}Rent</span><span class="v">${money(L.rent)} / week</span></div>
-            <div class="nt-prop"><span class="k">${icon('bed')}Rooms</span><span class="v">${L.bedrooms === 0 ? 'Studio' : L.bedrooms + ' bed'} · ${L.bathrooms} bath</span></div>
-            <div class="nt-prop"><span class="k">${icon('cal')}Available</span><span class="v">${esc(fmtDate(L.available_from))}</span></div>
-            <div class="nt-prop"><span class="k">${icon('doc')}Source</span><span class="v">${isReal(C) ? tag('real', 'Real listing') : tag('synthetic', 'Synthetic place')}</span></div>
-          </div>
+          <div class="nt-place-specs">${specRow({ ...L, parking: L.parking != null ? L.parking : C.parking })}${isReal(C) ? tag('real', 'Real listing') : tag('synthetic', 'Synthetic place')}</div>
           <div class="nt-checks-h"><h4>Checks</h4><div class="nt-counts">${countsHTML}</div></div>
           <div class="nt-checks" role="list">${rowsHTML}</div>
           ${special}
@@ -495,7 +500,7 @@ window.HTUI = (() => {
         const [st, sb] = splitTitle(L);
         return `<button type="button" class="nt-gcard fx-card" data-open="${esc(L.id)}">
           <span class="cv">${coverOf(L) ? `<img src="${esc(coverOf(L))}" alt="" loading="lazy">` : ''}<span class="tags">${isReal(L) ? tag('real', 'Real listing') : tag('synthetic', 'Synthetic')}${L.floorplan ? tag('plain', '3D plan') : ''}</span></span>
-          <span class="meta"><span class="av" aria-hidden="true">${isReal(L) ? 'D' : 'S'}</span><span><span class="t">${esc(st)}</span><span class="s">${esc(sb)} · ${L.bedrooms === 0 ? 'Studio' : L.bedrooms + ' bed'} · ${L.bathrooms} bath</span></span><span class="price" data-price="${esc(L.id)}">${priceText(L)}</span></span></button>`;
+          <span class="meta"><span class="av" aria-hidden="true">${isReal(L) ? 'D' : 'S'}</span><span><span class="t">${esc(st)}</span><span class="s">${esc(sb)}</span>${specRow(L, { rent: false, date: false, cls: 'sm' })}</span><span class="price" data-price="${esc(L.id)}">${priceText(L)}</span></span></button>`;
       }).join('');
       $$('[data-price]', el.gallery).forEach((n) => { n.dataset.val = n.textContent; });
       fx.reveal($$('.nt-gcard', el.gallery));
@@ -539,11 +544,11 @@ window.HTUI = (() => {
       const c = x.cell; const e0 = x.ev[0];
       const short = c && c.short && !STATUS_WORDS.has(String(c.short).toLowerCase()) ? sentence(String(c.short)) : '';
       const line = short || (e0 ? cardLine(e0, x.dim) : 'Nothing on file.');
-      const srcs = [...new Set(x.ev.map(sourceName))].slice(0, 3).join(' · ');
+      const srcs = srcIcons([...new Set(x.ev.map(sourceName))].slice(0, 4));
       const stages = [...new Set(x.ev.map(stageOf))].join(' ');
       const tags = c ? pill(c.status) + (c.hard && c.status === 'unknown' ? tag('confirm', 'To confirm') : '') + (c.status !== 'supported' ? nextTag(c.next) : '') : '';
       return `<article class="pp-card${c ? ' ' + esc(c.status) : ''}" data-dim="${esc(x.dim)}" data-status="${c ? esc(c.status) : ''}" data-stages="${esc(stages)}" role="listitem">
-        <button type="button" class="pp-card-btn" aria-expanded="false"${x.ev.length ? '' : ' disabled'}><span class="t">${esc(x.label)}</span><span class="v">${esc(line)}</span><span class="f">${tags}${srcs ? `<span class="src">${esc(srcs)}</span>` : ''}</span></button>
+        <button type="button" class="pp-card-btn" aria-expanded="false"${x.ev.length ? '' : ' disabled'}><span class="t">${esc(x.label)}</span><span class="v">${esc(line)}</span><span class="f">${tags}${srcs ? `<span class="src">${srcs}</span>` : ''}</span></button>
         <div class="pp-ev" hidden>${x.ev.map((e) => `<div class="pp-ev-item"><span class="tag plain">${esc(sourceName(e))}</span><p>${esc(plainLine(e.text, e))}</p>${e.image ? `<img src="${esc(e.image)}" alt="" loading="lazy">` : ''}<span class="m">${esc(e.table || '')}${e.row ? ' · row ' + esc(e.row) : ''}${e.request_id ? ' · ' + esc(e.request_id) : e.material_id ? ' · ' + esc(e.material_id) : ''}${e.read_by ? ' · read by ' + esc(modelName(e.read_by)) : ''}</span></div>`).join('')}</div></article>`;
     }
     function openPeek(id) {
@@ -552,7 +557,7 @@ window.HTUI = (() => {
       const [street, suburb] = splitTitle(L);
       const photos = [...(L.images || []).map((im) => ({ src: im.url, caption: im.caption || 'Photo', condition: im.condition })), ...(!L.images && L.image ? [{ src: L.image, caption: L.photo_caption || 'Photo' }] : [])];
       const checks = placeChecks(L, rec);
-      const commute = L.commute ? Object.entries(L.commute).map(([k, v]) => `<article class="pp-card" data-status="" data-stages="public" role="listitem"><div class="pp-card-btn static"><span class="t">To ${esc(DEST[k] || sentence(k))}</span><span class="v">${esc(v.min)} min by ${esc(v.mode || 'transit')}</span><span class="f">${v.estimate ? tag('plain', 'estimate') : ''}<span class="src">${v.estimate ? 'Distance estimate' : 'Transit table'}</span></span></div></article>`) : [];
+      const commute = L.commute ? Object.entries(L.commute).map(([k, v]) => `<article class="pp-card" data-status="" data-stages="public" role="listitem"><div class="pp-card-btn static"><span class="t">${esc(DEST[k] || sentence(k))}</span><span class="v ic">${icon('train')}${esc(v.min)} min · ${esc(v.mode || 'transit')}</span><span class="f">${v.estimate ? tag('plain', 'estimate') : ''}<span class="src">${srcIcons([v.estimate ? 'Distance estimate' : 'Transit table'])}</span></span></div></article>`) : [];
       const groups = GROUPS.map(([g, name]) => {
         const here = checks.filter((x) => groupOf(x.dim) === g).map(checkCard);
         if (g === 'G') here.push(...commute);
@@ -561,22 +566,25 @@ window.HTUI = (() => {
       const nChecks = checks.length + commute.length;
       const n = rec ? counts(rec.L.cells) : null;
       const stagesHere = [...new Set(checks.flatMap((x) => x.ev.map(stageOf)))].filter((s) => STAGE_SHORT[s]);
-      const specs = [[money(L.rent), 'per week'], [L.bedrooms === 0 ? 'Studio' : L.bedrooms, L.bedrooms === 1 ? 'bedroom' : L.bedrooms === 0 ? 'layout' : 'bedrooms'], [L.bathrooms, L.bathrooms === 1 ? 'bathroom' : 'bathrooms'], L.parking != null ? [L.parking, L.parking === 1 ? 'car space' : 'car spaces'] : null, [fmtDate(L.available_from), 'available']].filter(Boolean);
+      const tiles = photos.slice(0, photos.length >= 5 ? 5 : photos.length >= 3 ? 3 : photos.length);
       const nav = [['pp-checks', 'Checks', nChecks], photos.length ? ['pp-photos', 'Photos', photos.length] : null, L.floorplan ? ['pp-plan', '3D plan', ''] : null, (L.features || []).length ? ['pp-features', 'Features', L.features.length] : null, ['pp-text', isReal(L) ? 'Listing text' : 'What stands out', '']].filter(Boolean);
       const words = Array.isArray(L.description) && L.description.length
         ? `${L.headline ? `<p class="pp-hl">${esc(sentence(String(L.headline).toLowerCase().replace(/\s+/g, ' ')))}</p>` : ''}<div class="nt-acc pp-acc"><div class="fx-acc"><button type="button" class="fx-acc-q" aria-expanded="false">Full description<span class="fx-acc-pm" aria-hidden="true"></span></button><div class="fx-acc-body"><div class="fx-acc-a">${L.description.map((p) => `<p>${esc(p)}</p>`).join('')}</div></div></div></div><p class="pp-credit">From the listing on Domain${L.source.agency ? ', ' + esc(L.source.agency) : ''}.</p>`
         : `<p class="pp-quote">${esc(sentence(L.special || 'A synthetic place for testing the checks.'))}</p><p class="pp-credit">A synthetic place on a fictional street.</p>`;
       el.peek.innerHTML = `<div class="nt-peek-bar"><button type="button" class="nt-btn nt-btn-quiet nt-btn-xs" data-close aria-label="Close">${icon('close')}</button><span class="nt-crumbs"><span>${rec ? 'Your shortlist' : 'Explore'}</span><span>/</span><b>${esc(street)}</b></span></div>
         <div class="nt-peek-scroll" id="peek-scroll"><div class="pp">
-          <header class="pp-hero">
-            <div class="pp-hero-l">
-              <p class="pp-kicker">${isReal(L) ? tag('real', 'Real listing') + `<span>${esc(L.source.agency || 'Domain')}</span>` : tag('synthetic', 'Synthetic place')}${rec ? `<span class="pp-rank">#${rec.rank} on your shortlist</span>` : ''}</p>
+          ${tiles.length ? `<div class="pp-mosaic"><p class="pp-brand">${isReal(L) ? esc(L.source.agency || 'Domain') : 'Synthetic place · illustrative photo'}</p>
+            <div class="pp-tiles n${tiles.length}">${tiles.map((p, i) => `<button type="button" class="pp-tile" data-lb="${i}"><img src="${esc(p.src)}" alt="${esc(p.caption)}"${i ? ' loading="lazy"' : ''}></button>`).join('')}
+              <div class="pp-tile-acts">${L.floorplan ? `<a class="pp-chip" href="#pp-plan" data-to="pp-plan">${icon('plan')}3D plan</a>` : ''}${photos.length > 1 ? `<a class="pp-chip" href="#pp-photos" data-to="pp-photos" title="All photos">${icon('photo')}${photos.length}</a>` : ''}</div></div></div>
+            <p class="pp-credit pp-credit-r">${esc(photoTag(L))}</p>` : ''}
+          <header class="pp-head">
+            <div>
+              <p class="pp-kicker">${isReal(L) ? tag('real', 'Real listing') : tag('synthetic', 'Synthetic place')}${rec ? `<span class="pp-rank">#${rec.rank} on your shortlist</span>` : ''}</p>
               <h1 class="pp-h1">${esc(street)}</h1>
               <p class="pp-sub">${esc(suburb)} ${esc(L.postcode || '')}</p>
-              <dl class="pp-specs">${specs.map(([v, k]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
-              <div class="pp-acts">${isReal(L) && L.source.url ? `<a class="nt-btn nt-btn-primary" href="${esc(L.source.url)}" target="_blank" rel="noopener">Listing on Domain ${icon('ext')}</a>` : ''}<a class="nt-btn nt-btn-secondary" href="#pp-checks" data-to="pp-checks">See the checks</a></div>
+              ${specRow(L, { cls: 'lg' })}
             </div>
-            ${photos[0] ? `<figure class="pp-cover"><button type="button" data-lb="0"><img src="${esc(photos[0].src)}" alt="${esc(photos[0].caption)}"></button><figcaption>${esc(photoTag(L))}</figcaption></figure>` : ''}
+            <div class="pp-acts">${isReal(L) && L.source.url ? `<a class="nt-btn nt-btn-primary" href="${esc(L.source.url)}" target="_blank" rel="noopener">Listing on Domain ${icon('ext')}</a>` : ''}<a class="nt-btn nt-btn-secondary" href="#pp-checks" data-to="pp-checks">See the checks</a></div>
           </header>
           ${n ? `<div class="pp-verdict">${['supported', 'inferred', 'conflict', 'unknown'].map((s) => `<button type="button" class="pp-vcard ${s}${n[s] ? '' : ' zero'}" data-status="${s}"><b>${n[s]}</b><span class="tag status dot ${s}">${STATUS[s]}</span></button>`).join('')}</div>
             ${rec.qtext ? `<div class="pp-ask">${ASK}<div><p class="nt-eyebrow">Best question for the agent</p><p class="q">${esc(sentence(rec.qtext))}</p></div></div>` : ''}` : ''}

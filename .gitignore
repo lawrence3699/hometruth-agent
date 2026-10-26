@@ -46,3 +46,6 @@ __pycache__/
 *.pyc
 .venv/
 .DS_Store
+
+# generated on the box by the auto-deploy (which commit is live)
+deploy_info.json
