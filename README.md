@@ -112,4 +112,10 @@ python3 scripts/ui_flow_check.py http://127.0.0.1:8630 runs/screenshots/flow
 
 ## 8. 部署
 
-公网那两个地址跑在校园网的 Windows 盒子上，更新和重启见 `infra/windows/README.md`，只有超亮能操作；本地开发不需要碰。
+公网那两个地址跑在校园网的 Windows 盒子上。**合并到 main 就自动上线**：盒子每 2 分钟拉一次 main，跑完全部单测（约 3 分钟）通过才切换并重启，测试不过就不换、上一版继续跑。所以：
+
+- 开发走分支 + PR，合并到 main 之前本地 `python3 -m unittest discover -s tests -p 'test_*.py'` 要全过；
+- 合并后 5 分钟内看一眼 `curl -A HomeTruth-client/1 https://hometruth.codeprism.tech/api/hello`，`deployed.sha` 应该变成你的合并提交；没变就是测试没过或切换失败，问超亮看盒子上的 `deploy.log`；
+- 盒子上的 `.env`、照片、运行记录不会被部署覆盖；手工改盒子上的文件没用，下一次部署会冲掉。
+
+脚本和细节见 `infra/windows/README.md`，盒子只有超亮能登录；本地开发不需要碰。
