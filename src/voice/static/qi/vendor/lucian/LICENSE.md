@@ -55,7 +55,7 @@ to this folder for it (044, 056, 061, 213, 217, 260, 271, 275).
 | 061 | Thumbnail-to-lightbox zoom | photos and the floor plan in the side peek |
 | 070 | Stacking toasts | a change from an agent reply |
 | 083 | Queue bar turning into progress | the bar under "Sources" |
-| 084 | Voice-reactive dot loader | the dots in the talk button (listening / thinking / speaking) |
+| 084 | Voice-reactive dot loader | used in the first two rounds (dots in the mic button); since 10-27 evening the button carries the Orb from ../agents-orb.js instead |
 | 086 | Streaming AI answer | what it says, arriving word by word in the callout |
 | 212 | Hide-on-scroll header | the nav, with the reading-progress line |
 | 213 | Auto-advancing feature tabs | used in the first version (2026-10-27); the second round replaced the tabs with bento cards, the file stays for reference |

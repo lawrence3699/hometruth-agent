@@ -100,7 +100,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         u = urllib.parse.urlparse(self.path)
-        if u.path in ("/", "/index.html"):  # the qi.home-shell page (static/qi); the previous page stays at /classic
+        if u.path in ("/", "/index.html"):  # since 10-27 evening: the Notion-style page (static/notion); the qi shell stays at /qi, the first page at /classic
+            return self._file(HERE / "static" / "notion" / "index.html")
+        if u.path in ("/qi", "/qi.html"):
             return self._file(HERE / "static" / "qi" / "index.html")
         if u.path in ("/classic", "/classic.html"):
             return self._file(HERE / "static" / "index.html")

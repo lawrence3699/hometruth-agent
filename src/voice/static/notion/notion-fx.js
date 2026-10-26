@@ -137,8 +137,6 @@ export function toaster(box) {
   };
 }
 
-/* #084 Voice-reactive dot loader: three dots breathe while idle, bounce in a wave while thinking and stretch with the voice level */
-export function setLevel(btn, x) { if (btn) btn.style.setProperty('--lv', clamp(x || 0, 0, 1).toFixed(3)); }
 
 /* #086 Streaming AI answer: the sentence flows in word by word out of a light blur, a caret blinking at the end until it is done */
 export function stream(node, text) {

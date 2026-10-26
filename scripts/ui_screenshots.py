@@ -2,7 +2,7 @@
 """Drive the HomeTruth pages in headless Chrome over the DevTools protocol and save full-resolution screenshots.
 
 Run with the two voice servers up:  .venv/bin/python scripts/ui_screenshots.py 8630 8631 [--prefix qi] [--classic]
-Since 2026-10-26 the pages at / wear the qi.home shell (static/qi); --classic shoots the previous pages at /classic instead.
+Since 2026-10-27 evening / is the Notion-style page (static/notion); the qi.home shell (static/qi, whose selectors this script uses) lives at /qi; --classic shoots the first pages at /classic instead.
 Needs Google Chrome in /Applications and the `websockets` package (in .venv). Output: runs/screenshots/<prefix>_<port>_*.png
 Chrome is driven on debugging ports 9343/9344 (prototypes/cardflow/shots.py uses 9333, so both can run at the same time).
 Steps wait for things on the page (a question chip, a source row, a card, a highlighted line) instead of fixed sleeps, so the
@@ -109,7 +109,7 @@ async def main():
     classic = "--classic" in sys.argv
     prefix = sys.argv[sys.argv.index("--prefix") + 1] if "--prefix" in sys.argv else ("v3" if classic else "qi")
     args = [a for a in args if a != prefix]
-    page = "/classic" if classic else "/"
+    page = "/classic" if classic else "/qi"  # the qi shell moved to /qi when the Notion page took / (10-27)
     which = args or ["8631", "8630"]
     if "8630" in which:
         print("== 8630 (browser version) ==", flush=True)

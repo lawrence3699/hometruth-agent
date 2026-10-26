@@ -9,6 +9,7 @@
    /api/listings; the photos of the five synthetic places are illustrative design photos, the nine real places carry their own. */
 import * as fx from './notion-fx.js?v=3';
 import { LOGO, HOUSE, CLIPBOARD, KEY, ASK, PEEK } from './ink.js?v=3';
+import { createAgentsOrb } from '../qi/agents-orb.js?v=8';  // the same Orb as the current design's Start talking pill
 
 window.HTUI = (() => {
   'use strict';
@@ -131,7 +132,7 @@ window.HTUI = (() => {
 <header class="nt-nav" id="nav" data-enter="0">
   <a class="nt-brand" href="#top" aria-label="HomeTruth home">${LOGO}<span>HomeTruth</span></a>
   <nav class="nt-menu" aria-label="Main"><a href="#workspace">Find a place</a><a href="#how">How it checks</a><a href="#explore">Explore</a><a href="#faq">Questions</a></nav>
-  <div class="nt-right"><a class="nt-btn nt-btn-quiet nt-btn-sm" href="/" title="The current HomeTruth design">Current design</a><button type="button" class="nt-btn nt-btn-primary nt-btn-sm" data-talk>Start talking</button></div>
+  <div class="nt-right"><a class="nt-btn nt-btn-quiet nt-btn-sm" href="/qi" title="The previous HomeTruth design (qi shell)">Previous design</a><button type="button" class="nt-btn nt-btn-primary nt-btn-sm" data-talk>Start talking</button></div>
   <i class="nt-nav-progress" id="nav-progress" aria-hidden="true"></i>
 </header>
 <main id="top">
@@ -145,7 +146,7 @@ window.HTUI = (() => {
         <label class="sr-only" for="text">Describe the place you need</label>
         <input id="text" type="text" maxlength="280" placeholder="Or type what you need…">
         <span class="fx-ph" id="ph" aria-hidden="true"></span>
-        <button type="button" id="mic" class="nt-mic" aria-pressed="false" title="Talk instead of typing (Chrome)">${icon('mic')}<span class="fx-dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="mic-label">Start talking</span></button>
+        <button type="button" id="mic" class="nt-mic" aria-pressed="false" title="Talk instead of typing (Chrome)"><span class="nt-orb" id="mic-orb" aria-hidden="true"></span><span id="mic-label">Start talking</span></button>
         <button type="submit" id="send" class="nt-send" aria-label="Send">${icon('up', '')}</button>
       </form>
     </div>
@@ -286,6 +287,10 @@ window.HTUI = (() => {
     fx.accordion($('#acc'));
     fx.magnetic($$('.nt-arrow-btn'));
     const toast = fx.toaster(el.toasts);
+    // the Orb in the Start talking pill: it shows what the voice is doing (listening / thinking / speaking) and follows the mic level
+    let orb = null, orbState = 'idle';
+    try { orb = createAgentsOrb($('#mic-orb')); } catch (e) { $('#mic-orb').hidden = true; }
+    const setOrb = (st) => { if (orb && st !== orbState) { orbState = st; orb.setState(st); } };
     const lb = fx.lightbox(el.lightbox);
     const placeView = fx.slider(el.views, $('.fx-knob', el.views));
     requestAnimationFrame(() => placeView($('.is-on', el.views), false));
@@ -674,14 +679,15 @@ window.HTUI = (() => {
       },
       phase(p, label) {
         phaseNow = p; html.dataset.phase = p;
+        setOrb(p === 'searching' ? 'thinking' : ['listening', 'thinking', 'speaking', 'error'].includes(p) ? p : el.micBtn.classList.contains('on') ? 'listening' : 'idle');
         const txt = sentence(label || p);
         if (el.phase.textContent !== txt) el.phase.textContent = txt;
         const busy = p === 'thinking' || p === 'searching';
         el.sayPhase.textContent = busy ? (p === 'searching' ? 'Checking the sources…' : txt + '…') : '';
         el.sayPhase.classList.toggle('fx-sheen', busy);
       },
-      level(x) { if (phaseNow === 'listening' || el.micBtn.classList.contains('on')) fx.setLevel(el.micBtn, x); },
-      botLevel(x) { if (phaseNow === 'speaking') fx.setLevel(el.micBtn, x); },
+      level(x) { if (orb && orbState === 'listening') orb.setLevel(Math.max(0, Math.min(1, x || 0))); },
+      botLevel(x) { if (orb && orbState === 'speaking') orb.setLevel(Math.max(0, Math.min(1, x || 0))); },
       interrupt() { el.caption.classList.add('dim'); },
       caption(t) {
         el.caption.classList.remove('dim', 'hint');
@@ -694,7 +700,7 @@ window.HTUI = (() => {
         el.transcript.classList.toggle('interim', !!interim);
       },
       userSaid(t) { ui.transcript(t, false); joinTurn = false; if (stage === 'home') setStage('talk'); },
-      error(m) { el.caption.classList.remove('hint', 'dim'); el.caption.innerHTML = `<span class="error">${esc(m)}</span>`; html.dataset.phase = 'error'; },
+      error(m) { el.caption.classList.remove('hint', 'dim'); el.caption.innerHTML = `<span class="error">${esc(m)}</span>`; html.dataset.phase = 'error'; setOrb('error'); },
       latency(a, b) { meta('latency', a == null && b == null ? '' : `First event ${a == null ? '–' : a + ' ms'} · first word ${b == null ? '–' : b + ' ms'}`); },
       events(n) { el.metaBox.title = `${n} events this session`; },
       note(t) { el.note.textContent = t || ''; },

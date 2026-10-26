@@ -120,21 +120,13 @@ section[id],div[id].nt-anchor{scroll-margin-top:84px}
 .fx-ph::after{content:"";display:inline-block;width:1.5px;height:1.05em;margin-left:1px;vertical-align:-3px;background:var(--blue);animation:fx-caret 1s steps(2) infinite}
 .fx-ph.still::after{display:none}
 @keyframes fx-caret{50%{opacity:0}}
-.nt-mic{position:relative;display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 14px 0 12px;border:0;border-radius:12px;background:var(--bg-2);color:var(--ink-2);font-size:15px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .15s,color .15s}
-.nt-mic:hover{background:var(--bg-3)}
-.nt-mic .ico{width:17px;height:17px}
-.nt-mic.on{background:var(--blue-2);color:var(--blue-d)}
-/* #084 voice-reactive dot loader, inside the mic button */
-.fx-dots{display:none;align-items:center;gap:3px;height:18px}
-.fx-dots i{width:5px;height:calc(5px + var(--lv,0) * 13px * var(--m,1));border-radius:5px;background:currentColor;transition:height .12s linear}
-.fx-dots i:nth-child(1){--m:.7}.fx-dots i:nth-child(2){--m:1}.fx-dots i:nth-child(3){--m:.55}
-.nt-mic.on .fx-dots,html[data-phase=speaking] .nt-mic .fx-dots,html[data-phase=thinking] .nt-mic .fx-dots,html[data-phase=searching] .nt-mic .fx-dots{display:inline-flex}
-.nt-mic.on .ico,html[data-phase=speaking] .nt-mic .ico,html[data-phase=thinking] .nt-mic .ico,html[data-phase=searching] .nt-mic .ico{display:none}
-html[data-phase=thinking] .nt-mic .fx-dots i,html[data-phase=searching] .nt-mic .fx-dots i{height:5px;animation:fx-wave 1s cubic-bezier(.45,0,.55,1) infinite}
-.fx-dots i:nth-child(2){animation-delay:.1s!important}.fx-dots i:nth-child(3){animation-delay:.2s!important}
-@keyframes fx-wave{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-5px)}}
-html[data-phase=speaking] .nt-mic:not(.on) .fx-dots i{animation:fx-talk .8s ease-in-out infinite alternate}
-@keyframes fx-talk{from{height:5px}to{height:15px}}
+.nt-mic{position:relative;display:inline-flex;align-items:center;gap:9px;height:44px;padding:0 16px 0 5px;border:0;border-radius:999px;background:#fff;box-shadow:inset 0 0 0 1px var(--line-2);color:var(--ink);font-size:15px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background-color .15s,box-shadow .2s,transform .2s var(--spring)}
+.nt-mic:hover{background:var(--bg-1)}
+.nt-mic:active{transform:scale(.97)}
+.nt-mic.on{background:var(--blue-1);box-shadow:inset 0 0 0 1px var(--blue-3)}
+/* the Orb (the current design's, ../qi/agents-orb.js): it carries the voice state, so the pill needs no other indicator */
+.nt-orb{display:block;width:34px;height:34px;flex:none;border-radius:50%}
+.nt-orb[hidden]{display:none}
 .nt-send{display:grid;place-items:center;width:34px;height:34px;margin:0 2px 0 4px;border:0;border-radius:50%;background:var(--blue);color:#fff;cursor:pointer;flex:none;transition:background .15s,transform .2s var(--spring)}
 .nt-send:hover{background:var(--blue-d)}
 .nt-send:active{transform:scale(.9)}
