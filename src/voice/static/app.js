@@ -71,7 +71,23 @@ let browserDone = null;
 const AC = window.AudioContext || window.webkitAudioContext;
 let actx = null;
 function ensureCtx() { if (!actx) actx = new AC(); if (actx.state === 'suspended') actx.resume().catch(() => {}); return actx; }
-document.addEventListener('click', () => ensureCtx(), { capture: true });
+// 10-27 "it never talks": on an iPhone / iPad, Web Audio is muted by the ring/silent switch unless the page says it is a media player.
+// navigator.audioSession (Safari 16.4+) does that; with the mic on it has to be play-and-record. Older iOS: a looping silent <audio>
+// started inside the first tap moves the page to the playback category the same way.
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function audioSession(mic) { try { if (navigator.audioSession) navigator.audioSession.type = mic ? 'play-and-record' : 'playback'; } catch (e) {} }
+audioSession(false);
+let unmuteEl = null;
+function unmuteIOS() {
+  if (!IOS || navigator.audioSession || unmuteEl) return;
+  const n = 4000, b = new ArrayBuffer(44 + n * 2), v = new DataView(b), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  unmuteEl = new Audio(URL.createObjectURL(new Blob([b], { type: 'audio/wav' }))); unmuteEl.loop = true; unmuteEl.setAttribute('playsinline', '');
+  unmuteEl.play().catch(() => { unmuteEl = null; });
+}
+document.addEventListener('click', () => { ensureCtx(); unmuteIOS(); }, { capture: true });
+document.addEventListener('touchend', () => { ensureCtx(); unmuteIOS(); }, { capture: true });
 document.addEventListener('keydown', () => ensureCtx(), { capture: true });
 const player = {
   src: null, done: null, buffer: null, startedAt: 0, pausedFlag: false, pauseOffset: 0, guard: null,
@@ -193,7 +209,7 @@ async function speak(ev, gen) {
   if (!S.timeline.length && S.streamOpen && S.lastBusy && !S.pausedForUser) ui.phase(S.lastBusy.phase, S.lastBusy.label);  // nothing queued yet: the server is still parsing / writing, say so rather than "Speaking" + "One moment"
 }
 function metric() {
-  try { navigator.sendBeacon('/api/metric', new Blob([JSON.stringify({ session: S.session, source: 'client', first_event_ms: S.firstEventMs, first_audio_ms: S.firstAudioMs, turn_text: S.lastTurnText.slice(0, 120), interrupted: S.interruptedFlag })], { type: 'application/json' })); } catch (e) {}
+  try { navigator.sendBeacon('/api/metric', new Blob([JSON.stringify({ session: S.session, source: 'client', first_event_ms: S.firstEventMs, first_audio_ms: S.firstAudioMs, turn_text: S.lastTurnText.slice(0, 120), interrupted: S.interruptedFlag, ua: navigator.userAgent.slice(0, 180), audio: actx ? actx.state : 'none', mic: S.micOn, headphones: !!(el.headphones && el.headphones.checked) })], { type: 'application/json' })); } catch (e) {}
 }
 
 /* ---------------- barge-in: VAD + recogniser ---------------- */
@@ -223,6 +239,7 @@ function armPauseGuard() {  // an interruption whose final transcript never arri
 }
 function onSpeechStart() {  // standard 1: pause within ~120 ms of voiced audio
   if (!busy()) { ui.phase('listening', 'Listening'); return; }
+  if (!el.headphones.checked) return;  // 10-27: through speakers the mic hears our own voice and this paused every sentence ("it never talks"); without headphones only a real, non-echo transcript interrupts (handleInterim)
   clearTimeout(S.resumeTimer); player.pause(); S.pausedForUser = true; armPauseGuard(); ui.interrupt(); ui.phase('listening', 'Go ahead');
 }
 function onSpeechEnd(durMs) {  // standard 5: short noises resume unless a real transcript arrives
@@ -256,18 +273,25 @@ function startRecog() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { ui.note('Voice input needs Chrome · type instead'); return false; }
   const r = new SR(); r.continuous = true; r.interimResults = true; r.lang = 'en-AU'; r.maxAlternatives = 1;
-  r.onresult = (e) => { let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const res = e.results[i]; const t = res[0].transcript.trim(); if (res.isFinal) handleFinal(t); else interim += t + ' '; } if (interim.trim()) handleInterim(interim.trim()); };
-  r.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { ui.note('Mic blocked: ' + e.error); setMic(false); } else if (e.error !== 'no-speech' && e.error !== 'aborted') console.warn('asr', e.error); };
+  r.onresult = (e) => { S.asrErrors = 0; let interim = ''; for (let i = e.resultIndex; i < e.results.length; i++) { const res = e.results[i]; const t = res[0].transcript.trim(); if (res.isFinal) handleFinal(t); else interim += t + ' '; } if (interim.trim()) handleInterim(interim.trim()); };
+  r.onerror = (e) => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { ui.note('Mic blocked: ' + e.error); setMic(false); ui.error('The microphone is blocked for this page. Allow it in the address bar, or type instead.'); return; }
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    console.warn('asr', e.error); report('asr', e.error);
+    S.asrErrors = (S.asrErrors || 0) + 1;
+    if (S.asrErrors >= 2) { setMic(false); ui.note('Voice input failed: ' + e.error); ui.error('Voice input is not working in this browser (' + e.error + '). Type instead, or open the page in Chrome.'); }
+  };
   r.onend = () => { if (S.recogWanted) { try { r.start(); } catch (e) {} } };
-  S.recog = r; S.recogWanted = true; try { r.start(); } catch (e) {} return true;
+  S.recog = r; S.recogWanted = true; S.asrErrors = 0; try { r.start(); } catch (e) {} return true;
 }
 function stopRecog() { S.recogWanted = false; if (S.recog) { try { S.recog.stop(); } catch (e) {} S.recog = null; } }
 async function setMic(on) {
   if (on) {
-    try { await vad.start(); } catch (e) { ui.note('Mic unavailable: ' + e.message); return; }
+    audioSession(true);
+    try { await vad.start(); } catch (e) { audioSession(false); ui.note('Mic unavailable: ' + e.message); ui.error('No microphone here (' + e.message + '). Type instead.'); return; }
     const ok = startRecog(); S.micOn = true; micButton(ok ? 'Listening' : 'Mic level only'); if (!busy()) ui.phase('listening', 'Listening');
     sendWelcome();  // a returning renter hears "Welcome back…" as soon as the mic is on (the click lets the page play sound)
-  } else { stopRecog(); vad.stop(); S.micOn = false; micButton(null); if (!busy()) ui.phase('idle', 'Ready'); }
+  } else { stopRecog(); vad.stop(); audioSession(false); S.micOn = false; micButton(null); if (!busy()) ui.phase('idle', 'Ready'); }
 }
 function micButton(label) {  // label = mic on; null = off
   el.mic.classList.toggle('on', !!label); el.mic.setAttribute('aria-pressed', String(!!label)); el.micLabel.textContent = label || 'Talk'; el.meter.hidden = !label;

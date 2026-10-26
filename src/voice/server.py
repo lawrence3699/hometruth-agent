@@ -162,7 +162,7 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("kind") == "client_error":  # the page reports a JavaScript error / a dropped event, so a stuck screen leaves a trace here
                 log({"kind": "client_error", "session": str(body.get("session") or "")[:64], "where": str(body.get("where") or "")[:80], "error": str(body.get("error") or "")[:600]})
             else:
-                log(dict({"kind": "client_metric"}, **{k: v for k, v in body.items() if k in ("session", "source", "first_event_ms", "first_audio_ms", "turn_text", "interrupted")}))
+                log(dict({"kind": "client_metric"}, **{k: v for k, v in body.items() if k in ("session", "source", "first_event_ms", "first_audio_ms", "turn_text", "interrupted", "ua", "audio", "mic", "headphones")}))  # ua / audio / mic / headphones since 10-27: which browser, was the audio context running
             return self._send(204, b"")
         if u.path == "/api/reset":
             SESSIONS.reset(str(body.get("session") or "anon"))
