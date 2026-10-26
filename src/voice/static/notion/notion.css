@@ -740,3 +740,19 @@ html[data-stage=home] .fx-toasts{bottom:24px}
 .nt-win-right .nt-btn svg{width:14px;height:14px}
 html:not([data-stage=home]) .agent-launcher{bottom:92px}  /* above the docked composer */
 @media(max-width:760px){#panel-open span{display:none}.agent-panel{z-index:75}html:not([data-stage=home]) .agent-launcher{bottom:calc(140px + env(safe-area-inset-bottom,0px))}}  /* the docked composer is two rows high on a phone */
+
+/* 10-27 (superliang: the window on the home page should be smaller): on the home stage it is a preview, so it is narrower,
+   shorter and its type is a step down; once a conversation starts (data-stage=talk) it is the working page again at full size */
+.nt-ws{transition:width .45s var(--ease),margin .45s var(--ease)}
+html[data-stage=home] .nt-ws{width:min(1040px,100% - 2*var(--gut));margin-top:72px}
+html[data-stage=home] .nt-peeker{width:104px;top:-62px}
+html[data-stage=home] .nt-win-body{min-height:420px}
+html[data-stage=home] .nt-page{padding:24px clamp(18px,4vw,48px) 40px}
+html[data-stage=home] .nt-page-icon,html[data-stage=home] .nt-page-icon svg{width:44px;height:44px}
+html[data-stage=home] .nt-page-icon{margin-bottom:6px}
+html[data-stage=home] .nt-page-title{font-size:30px;line-height:38px;letter-spacing:-.6px}
+html[data-stage=home] .nt-props{margin-top:12px}
+html[data-stage=home] .nt-callout{margin-top:16px;padding:12px 14px}
+html[data-stage=home] .nt-say{font-size:17px;line-height:26px;min-height:26px}
+html[data-stage=home] .nt-views{margin-top:20px}
+@media (min-width:821px){html[data-stage=home] .nt-win-body{grid-template-columns:208px minmax(0,1fr)}}

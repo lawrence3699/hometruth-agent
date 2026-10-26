@@ -73,3 +73,8 @@
 - 对话浮窗：`../qi/conversation-panel.js` 原样引入（`conversation-panel.css` + chips 用的 `search-workspace.css`），它自己再建一颗 160 px 的 Orb。首轮用户说话后自动打开（麦克风开着是语音视图，否则消息视图）；窗口栏的 **Chat** 按钮开合；滚过 hero 后右下角出 “Ask HomeTruth” 启动器（桌面在停靠输入框上方 92 px，手机 140 px）。`ui-notion.js` 把 phase / caption / transcript / userSaid / needs / 结果数 / clear 同步给它，打开详情页时它收起。
 - 没并入的旧版功能：筛选面板、房源对比、详情页日照图。
 - 验证（无头 Chrome 1440 / 390）：已存的测试租客资料 14 张卡出 Style 角标；Hello 一轮后浮窗打开、转写两条、chips 两个、焦点仍在输入框；Chat 开合、启动器出现位置、手机无横向溢出、零 JS 报错。
+
+## 第六轮（10-27 上午）：首页减一块、窗口变小
+
+- 去掉了钉住滚动的那一块 “The rule it never breaks / An unknown is not a yes…”（超亮：这个动画 / 板块去掉）。`notion-fx.js` 里的 `scrollFill` 和 `notion.css` 的 `.nt-fill` 留着没用。
+- 首页上的工作区窗口改小（超亮：“你看怎么变小点”）：只在 `data-stage=home` 时——宽 1040（原来 1232）、窗口体最低 420 高（原来 620）、侧栏 208、页标题 30 px（原来 40）、图标 44、引语 17 px、探头小人 104 宽。开始对话后（`data-stage=talk`）窗口恢复原大小，宽度有 0.45 s 过渡。

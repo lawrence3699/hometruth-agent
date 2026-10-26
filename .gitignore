@@ -24,11 +24,11 @@ data/materials/*
 data/truth/*
 data/labels/*
 data/real/domain/*
-data/real/photos/**/*.jpg
-data/real/photos/**/*.jpeg
-data/real/photos/**/*.png
+# 真房源照片：公网要用的 prep/*.jpg 进仓库（超亮 10-27 定，私有仓库，约 7.7 MB）；Domain 原图 webp 不进（scripts/domain_sample.py fetch 能重下）
 data/real/photos/**/*.webp
+data/real/photos/**/*.png
 data/real/photos/**/*.gif
+data/real/photos/**/*.jpeg
 !data/**/README.md
 
 # ---- 私密文档：会议转写（队友原话）、真实看房报告样本 ----

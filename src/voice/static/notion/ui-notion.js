@@ -213,10 +213,6 @@ window.HTUI = (() => {
   <div class="nt-cards4">${LABELS.map(([st, d]) => `<div class="nt-card fx-card st-${st}"><span class="ic">${sIcon(st)}</span><h3>${STATUS[st]}</h3><p>${d}</p></div>`).join('')}</div>
 </section>
 
-<section class="nt-fill nt-wrap" id="fill" aria-label="An unknown is not a yes">
-  <div class="nt-fill-pin"><p class="nt-eyebrow">The rule it never breaks</p><p class="nt-fill-p" id="fill-p">An unknown is not a yes. It becomes <em>the question you ask the agent.</em></p></div>
-</section>
-
 <section class="nt-sec nt-wrap" id="explore" aria-labelledby="explore-title">
   <div class="nt-sec-head"><div><h2 class="nt-h3 fx-head" id="explore-title">Every place I can check.</h2><p class="nt-lead" id="explore-lede">Real Sydney rentals and synthetic ones.</p></div><div class="ink" aria-hidden="true">${HOUSE}</div></div>
   <div class="nt-ex-ctrl" id="explore-controls">
@@ -285,7 +281,6 @@ window.HTUI = (() => {
     fx.maskHeadings($$('.fx-head'));
     fx.reveal($$('.fx-card, .nt-bento'));
     fx.playInView($$('.nt-bcard'));
-    fx.scrollFill($('#fill'), $('#fill-p'));
     fx.accordion($('#acc'));
     fx.magnetic($$('.nt-arrow-btn'));
     const toast = fx.toaster(el.toasts);

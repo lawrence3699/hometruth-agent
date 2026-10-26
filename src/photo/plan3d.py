@@ -14,7 +14,7 @@
                          + 两三个可见特征）；类型对到 rooms（多间卧室按顺序；对不上就 room_id = null）。
 路由和 style.py 一样：先 Meterless Nightshift 的视觉路由，没有视觉车道就直连 NVIDIA、走了哪条如实记；串行 + 预算内换温度重试（接口不稳时的做法）。
 日志 runs/plan3d_facts.jsonl（字段照 photo_facts.jsonl：ts、listing、file、sha256、route、provider、model、served_model、ms、reading、raw，另加 task）。
-输出 data/real/photos/<DomainId>/plan3d.json（server.py 的 /real/<id>/plan3d.json 静态提供；这个目录不进 git，部署时单独传）。
+输出 data/real/photos/<DomainId>/plan3d.json（server.py 的 /real/<id>/plan3d.json 静态提供；prep/*.jpg 和 plan3d.json 10-27 起进私有仓库，随自动部署上盒子；原图 webp 不进）。
 
 跑：python3 src/photo/plan3d.py build [--listing L-D17153470] [--force | --rebuild] [--reread-photos] [--timeout 150] [--threshold 240]
     python3 src/photo/plan3d.py segment --listing L-D17153470        （不调模型，只出调试图）

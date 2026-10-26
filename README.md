@@ -75,7 +75,7 @@ python3 src/voice/server.py
 
 ## 5. 数据和缓存
 
-- 真房源的挂牌照片属于中介公司，**不进仓库**，只在本机演示用。向超亮要 `data/real/photos/`（约 20 MB）放到同样位置；没有它，9 套真房源照常参与核对，只是详情页没有照片和 3D plan。
+- 真房源的挂牌照片属于中介公司。公网要用的 `data/real/photos/<id>/prep/*.jpg`（64 张，7.7 MB）**在仓库里**（私有仓库，10-27 起；页面上带 “Real listing” 标和来源），Domain 原图 webp 不进，要重做 prep 用 `scripts/domain_sample.py fetch`。仓库公开之前要先处理这些照片（见 TODO）。
 - 模型读出来的事实（照片、户型图、3D plan 分房、风格匹配）已经随仓库带着：`runs/photo_facts.jsonl`、`runs/floorplan_facts.jsonl`、`runs/plan3d_facts.jsonl`、`runs/style_facts.jsonl`。要重算用 `src/photo/facts.py`、`src/photo/plan3d.py`、`src/photo/style.py warm`，会调 NVIDIA 看图接口。
 - `runs/` 里其他东西（模型调用记录、语音缓存、录音、截图、会话记忆）都是本机生成的，不进仓库。
 
@@ -104,7 +104,7 @@ python3 scripts/ui_flow_check.py http://127.0.0.1:8630 runs/screenshots/flow
 ## 7. 规矩
 
 - 分支 `feat/<模块>-<短名>`，`main` 只接 PR；提交信息 `<模块>: 做了什么`。
-- 不进仓库：`.env`、真房源照片和原始抓取、会议转写、密钥、服务器口令。`.gitignore` 已经写好，别改松。
+- 不进仓库：`.env`、真房源的原始抓取（data/real/domain）和原图 webp、会议转写、密钥、服务器口令。`.gitignore` 已经写好，别改松。
 - 两条不变量：**旁白只从证据矩阵生成**（模型只负责把事实说顺，不能加事实）；**所有模型调用经 Meterless Nightshift 记录**，转发不通就直连并如实记录。
 - 参考别家设计（REA、Domain、Notion…）只借交互和排版，我们没有的功能和数据不加。
 - 第三方素材都带出处：Lucian UX/UI Prompt 动效（MIT，`src/voice/static/qi/vendor/lucian/`）、three.js（MIT）、ElevenLabs 的球（营销页渲染器，许可未明，公开仓库前换成 MIT 版的 @elevenlabs/ui 同接口球，见 TODO）。
@@ -116,6 +116,6 @@ python3 scripts/ui_flow_check.py http://127.0.0.1:8630 runs/screenshots/flow
 
 - 开发走分支 + PR，合并到 main 之前本地 `python3 -m unittest discover -s tests -p 'test_*.py'` 要全过；
 - 合并后 5 分钟内看一眼 `curl -A HomeTruth-client/1 https://hometruth.codeprism.tech/api/hello`，`deployed.sha` 应该变成你的合并提交；没变就是测试没过或切换失败，问超亮看盒子上的 `deploy.log`；
-- 盒子上的 `.env`、照片、运行记录不会被部署覆盖；手工改盒子上的文件没用，下一次部署会冲掉。
+- 盒子上的 `.env`、运行记录不会被部署覆盖；照片随仓库部署；手工改盒子上的文件没用，下一次部署会冲掉。
 
 脚本和细节见 `infra/windows/README.md`，盒子只有超亮能登录；本地开发不需要碰。
