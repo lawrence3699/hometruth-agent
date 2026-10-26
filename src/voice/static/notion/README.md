@@ -63,3 +63,13 @@
 第三轮复查（10-27 晚）：真房源（9 / 6 张照片、带 3D）、合成房源（1 张照片）详情页开头，“3D plan”药丸跳转，画廊和工作区房源卡的图标行，手机 390 宽无横向溢出，内置浏览器控制台无报错。资源版本号 css `?v=5`、js `?v=4`。
 
 第四轮复查（10-27 晚）：Orb 用 WebGL 原版渲染（`original-webgl`），提交需求后状态依次 idle → thinking → speaking；首页、底部输入框、手机 390 宽三处截图；内置浏览器控制台无报错。js `?v=5`、css `?v=6`。
+
+## 第五轮（10-27 上午，主会话）：成为首页，并入旧版两个功能
+
+超亮经 fork 会话转话“将这个前端 ui 使用一下”，又定“装修风格匹配上传要保留，对话浮窗要保留，然后就可以推上线”。
+
+- `server.py` 的 `/` 现在指到这一页；qi 壳在 `/qi`，最早的页在 `/classic`。导航里的 “Current design” 改成 “Previous design” → /qi。
+- 「Looks like this」：`../qi/style-match.js` 一份代码两处用——它的挂载点改成可配置 `window.HT_STYLE_MOUNT`（index.html 里设：按钮进 `#explore-controls`，面板放在 `#gallery` 之前，角标贴在 `.nt-gcard[data-open]` 的封面 `.cv` 上），样式还是 `../qi/style-match.css`，按钮加了 `nt-btn nt-btn-secondary nt-btn-sm`。
+- 对话浮窗：`../qi/conversation-panel.js` 原样引入（`conversation-panel.css` + chips 用的 `search-workspace.css`），它自己再建一颗 160 px 的 Orb。首轮用户说话后自动打开（麦克风开着是语音视图，否则消息视图）；窗口栏的 **Chat** 按钮开合；滚过 hero 后右下角出 “Ask HomeTruth” 启动器（桌面在停靠输入框上方 92 px，手机 140 px）。`ui-notion.js` 把 phase / caption / transcript / userSaid / needs / 结果数 / clear 同步给它，打开详情页时它收起。
+- 没并入的旧版功能：筛选面板、房源对比、详情页日照图。
+- 验证（无头 Chrome 1440 / 390）：已存的测试租客资料 14 张卡出 Style 角标；Hello 一轮后浮窗打开、转写两条、chips 两个、焦点仍在输入框；Chat 开合、启动器出现位置、手机无横向溢出、零 JS 报错。

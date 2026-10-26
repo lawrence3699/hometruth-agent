@@ -730,3 +730,13 @@ html[data-stage=home] .fx-toasts{bottom:24px}
   .nt-cta{padding:80px 16px}
   .nt-cta .acts{flex-direction:column;align-items:center}
 }
+
+/* ---- ported from the previous design (10-27): the floating conversation panel (qi/conversation-panel.css) and "Looks like this" (qi/style-match.css) ---- */
+.agent-panel,.agent-launcher{font-family:inherit}
+#explore-controls .ht-style-button{margin-left:auto}
+#explore-controls .ht-style-button.has-result{color:var(--inf,#b45309)}
+.ht-style-panel{margin:0 0 18px;border-radius:10px;background:var(--bg-2,#f6f5f4);border-color:var(--line,#e9e9e7)}
+.nt-win-right .nt-btn{display:inline-flex;align-items:center;gap:4px}
+.nt-win-right .nt-btn svg{width:14px;height:14px}
+html:not([data-stage=home]) .agent-launcher{bottom:92px}  /* above the docked composer */
+@media(max-width:760px){#panel-open span{display:none}.agent-panel{z-index:75}html:not([data-stage=home]) .agent-launcher{bottom:calc(140px + env(safe-area-inset-bottom,0px))}}  /* the docked composer is two rows high on a phone */

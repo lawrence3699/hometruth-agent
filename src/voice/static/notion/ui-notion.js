@@ -9,7 +9,8 @@
    /api/listings; the photos of the five synthetic places are illustrative design photos, the nine real places carry their own. */
 import * as fx from './notion-fx.js?v=3';
 import { LOGO, HOUSE, CLIPBOARD, KEY, ASK, PEEK } from './ink.js?v=3';
-import { createAgentsOrb } from '../qi/agents-orb.js?v=8';  // the same Orb as the current design's Start talking pill
+import { createAgentsOrb } from '../qi/agents-orb.js?v=8';
+import { createConversationPanel } from '../qi/conversation-panel.js?v=8';  // the floating panel of the previous design, kept (superliang 10-27): its own Orb, status, transcript, composer  // the same Orb as the current design's Start talking pill
 
 window.HTUI = (() => {
   'use strict';
@@ -163,6 +164,7 @@ window.HTUI = (() => {
       <span class="nt-dots" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="nt-crumbs"><span>HomeTruth</span><span>/</span><b id="crumb">Your search</b></span>
       <span class="nt-win-right"><span class="nt-phase"><i class="nt-phase-dot"></i><span id="phase">Ready</span></span>
+        <button type="button" id="panel-open" class="nt-btn nt-btn-quiet nt-btn-xs" title="Open the conversation panel">${icon('chat')}<span>Chat</span></button>
         <button type="button" id="stop" class="nt-btn nt-btn-quiet nt-btn-xs" title="Stop speaking (Esc)">Stop</button>
         <button type="button" id="reset" class="nt-btn nt-btn-quiet nt-btn-xs">New search</button></span>
     </div>
@@ -217,7 +219,7 @@ window.HTUI = (() => {
 
 <section class="nt-sec nt-wrap" id="explore" aria-labelledby="explore-title">
   <div class="nt-sec-head"><div><h2 class="nt-h3 fx-head" id="explore-title">Every place I can check.</h2><p class="nt-lead" id="explore-lede">Real Sydney rentals and synthetic ones.</p></div><div class="ink" aria-hidden="true">${HOUSE}</div></div>
-  <div class="nt-ex-ctrl">
+  <div class="nt-ex-ctrl" id="explore-controls">
     <div class="fx-seg" id="ex-filter" role="tablist" aria-label="Which places"><button type="button" data-f="all" class="is-on">All<em id="n-all"></em></button><button type="button" data-f="real">Real listings<em id="n-real"></em></button><button type="button" data-f="synthetic">Synthetic<em id="n-syn"></em></button><i class="fx-knob" aria-hidden="true"></i></div>
     <div class="fx-seg" id="ex-unit" role="tablist" aria-label="Show rent"><button type="button" data-u="week" class="is-on">Per week</button><button type="button" data-u="month">Per month</button><i class="fx-knob" aria-hidden="true"></i></div>
   </div>
@@ -297,6 +299,17 @@ window.HTUI = (() => {
 
     /* ---------- controls ---------- */
     const submit = (t) => { el.text.value = t; typing.sync(); el.composer.requestSubmit(); };
+    /* ---------- the floating conversation panel (qi/conversation-panel.js): the same component as the previous design. It owns a second
+       Orb at 160 px; it opens on the first turn (voice view when the mic is on), the Chat button in the window bar reopens it, and
+       its launcher shows bottom-right once the hero is scrolled away ---------- */
+    const micOn = () => el.micBtn.classList.contains('on');
+    const panel = createConversationPanel({
+      anchor: $('#hero'), onSubmit: submit, onVoiceToggle: () => el.micBtn.click(),
+      onEnd: () => { const s = $('#stop'); if (s && !s.disabled) s.click(); },
+      onTyping: () => {}, onViewHomes: () => $('#workspace').scrollIntoView({ block: 'start', behavior: fx.reduced() ? 'auto' : 'smooth' }),
+      onEditCriteria: () => { el.text.placeholder = 'Say what to change, e.g. “make it under 800”'; el.text.focus(); }, onRemoveCriteria: () => {},
+    });
+    $('#panel-open').addEventListener('click', () => { if (panel.isOpen()) panel.minimize(); else panel.open({ view: micOn() ? 'voice' : 'chat', focus: !micOn() }); });
     el.suggestions.addEventListener('click', (e) => { const b = e.target.closest('[data-prompt]'); if (b) submit(b.dataset.prompt); });
     $$('[data-talk]').forEach((b) => b.addEventListener('click', () => {
       if (stage === 'home') { scrollTo({ top: 0, behavior: fx.reduced() ? 'auto' : 'smooth' }); }
@@ -371,6 +384,7 @@ window.HTUI = (() => {
     const coverOf = (L) => { const C = catalog.get(L.id) || {}; return L.image || C.image || (C.images && C.images[0] && C.images[0].url) || ''; };
     const counts = (cells) => { const n = { supported: 0, inferred: 0, conflict: 0, unknown: 0 }; (cells || []).forEach((c) => { if (n[c.status] != null) n[c.status]++; }); return n; };
     function renderSideShort() {
+      panel.setResults(cards.size);  // the panel's "View N homes" button
       const list = ordered();
       el.sideShort.innerHTML = list.length ? list.map((r) => `<li class="${r.L.id === mainId ? 'on' : ''}"><button type="button" data-show="${esc(r.L.id)}"><span class="rk">${r.rank}</span><span>${esc(splitTitle(r.L)[0])}</span></button></li>`).join('') : '<li class="muted">Empty</li>';
     }
@@ -558,7 +572,7 @@ window.HTUI = (() => {
     }
     function openPeek(id) {
       const L = catalog.get(id) || (cards.get(id) && cards.get(id).L); if (!L) return;
-      const rec = cards.get(id);
+      const rec = cards.get(id); panel.suspend();
       const [street, suburb] = splitTitle(L);
       const photos = [...(L.images || []).map((im) => ({ src: im.url, caption: im.caption || 'Photo', condition: im.condition })), ...(!L.images && L.image ? [{ src: L.image, caption: L.photo_caption || 'Photo' }] : [])];
       const checks = placeChecks(L, rec);
@@ -679,12 +693,15 @@ window.HTUI = (() => {
       },
       phase(p, label) {
         phaseNow = p; html.dataset.phase = p;
-        setOrb(p === 'searching' ? 'thinking' : ['listening', 'thinking', 'speaking', 'error'].includes(p) ? p : el.micBtn.classList.contains('on') ? 'listening' : 'idle');
+        const st = p === 'searching' ? 'thinking' : ['listening', 'thinking', 'speaking', 'error'].includes(p) ? p : micOn() ? 'listening' : 'idle';
+        setOrb(st); panel.setState(st);
         const txt = sentence(label || p);
         if (el.phase.textContent !== txt) el.phase.textContent = txt;
         const busy = p === 'thinking' || p === 'searching';
         el.sayPhase.textContent = busy ? (p === 'searching' ? 'Checking the sources…' : txt + '…') : '';
         el.sayPhase.classList.toggle('fx-sheen', busy);
+        panel.setStatusText(p === 'searching' ? 'Checking the sources…' : busy ? txt + '…' : '');
+        if (p === 'listening' && /your turn/i.test(txt) && panel.isOpen()) panel.focus();
       },
       level(x) { if (orb && orbState === 'listening') orb.setLevel(Math.max(0, Math.min(1, x || 0))); },
       botLevel(x) { if (orb && orbState === 'speaking') orb.setLevel(Math.max(0, Math.min(1, x || 0))); },
@@ -693,14 +710,19 @@ window.HTUI = (() => {
         el.caption.classList.remove('dim', 'hint');
         if (!t) { el.caption.textContent = ''; return; }
         const m = /^best question(?: for this agent)?:\s*(.+)$/i.exec(t); if (m && mainId && cards.get(mainId)) cards.get(mainId).qtext = m[1];
+        panel.appendTurn('assistant', t, joinTurn);
         fx.stream(el.caption, t); joinTurn = true;
       },
       transcript(t, interim) {
         el.transcript.innerHTML = t ? `<b>You</b>${esc(t)}` : '';
         el.transcript.classList.toggle('interim', !!interim);
+        if (interim && t) panel.setDraft(t);
       },
-      userSaid(t) { ui.transcript(t, false); joinTurn = false; if (stage === 'home') setStage('talk'); },
-      error(m) { el.caption.classList.remove('hint', 'dim'); el.caption.innerHTML = `<span class="error">${esc(m)}</span>`; html.dataset.phase = 'error'; setOrb('error'); },
+      userSaid(t) {
+        ui.transcript(t, false); panel.setDraft(''); panel.appendTurn('user', t); joinTurn = false;
+        if (stage === 'home') { setStage('talk'); panel.open({ view: micOn() ? 'voice' : 'chat' }); }
+      },
+      error(m) { el.caption.classList.remove('hint', 'dim'); el.caption.innerHTML = `<span class="error">${esc(m)}</span>`; html.dataset.phase = 'error'; setOrb('error'); panel.setState('error'); },
       latency(a, b) { meta('latency', a == null && b == null ? '' : `First event ${a == null ? '–' : a + ' ms'} · first word ${b == null ? '–' : b + ' ms'}`); },
       events(n) { el.metaBox.title = `${n} events this session`; },
       note(t) { el.note.textContent = t || ''; },
@@ -718,6 +740,7 @@ window.HTUI = (() => {
         const keys = new Set(chips.map((c) => c.dim + ':' + c.text + ':' + c.cls));
         chips.forEach((c) => { c.fresh = !lastChipKeys.has(c.dim + ':' + c.text + ':' + c.cls); c.i = c.fresh ? i++ : 0; });
         lastChipKeys = keys;
+        panel.setCriteria(chips.map((c) => ({ key: c.dim, label: c.text })));
         renderNeeds(chips);
         if (ev.parser) meta('parser', ev.parser === 'llm' ? `Needs read by Nemotron${ev.parse && ev.parse.provider ? ' via ' + sentence(ev.parse.provider) : ''}` : 'Needs read by rules');
         if (stage === 'home' && !ev.quiet) setStage('talk');
@@ -814,6 +837,7 @@ window.HTUI = (() => {
         resetShortlist(); changes.length = 0; renderChanges(); profile = null; lastChipKeys = new Set(); renderNeeds([]);
         el.caption.classList.add('hint'); el.caption.textContent = 'Tell me what you need.'; ui.transcript('', false);
         el.welcome.hidden = true; el.welcome.innerHTML = ''; titleUpdate(); setStage('home');
+        panel.reset(); panel.close(); panel.setResults(0); panel.setContext(null);
       },
     };
     renderNeeds([]); renderChanges();

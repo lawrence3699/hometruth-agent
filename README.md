@@ -63,7 +63,7 @@ cp .env.example .env
 python3 src/voice/server.py
 ```
 
-打开 http://127.0.0.1:8630 （首页是 Notion 风格页 `static/notion/`；上一版 qi 壳在 `/qi`，最早的页在 `/classic`，三个页共用 `static/app.js` 和同一套事件），在输入框写一句需求，例如 `Two bedrooms near Central, under 900 a week, I have a cat`，或点 **Start talking** 用麦克风。
+打开 http://127.0.0.1:8630 （首页是 Notion 风格页 `static/notion/`，带旧版的「Looks like this」风格匹配和右下角对话浮窗；上一版 qi 壳在 `/qi`，最早的页在 `/classic`，三个页共用 `static/app.js` 和同一套事件），在输入框写一句需求，例如 `Two bedrooms near Central, under 900 a week, I have a cat`，或点 **Start talking** 用麦克风。
 
 真语音版：
 

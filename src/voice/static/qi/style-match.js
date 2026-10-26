@@ -15,6 +15,9 @@ const PHRASE = {
   era: { new: 'new finishes', recent: 'recent finishes', older: 'older finishes' },
 };
 const SOFT = 'Soft preference — not used for ranking';
+// Where to mount, overridable by the page before this module loads (window.HT_STYLE_MOUNT): the defaults are the qi shell's;
+// the Notion page (static/notion/index.html) points them at its gallery (#gallery, .nt-gcard[data-open], cover .cv).
+const CFG = Object.assign({ controls: '#collection-controls', controlsAlt: '#filters-open', grid: '#property-grid', card: '.property-card[data-home-id]', idAttr: 'homeId', imageWrap: '.property-image-wrap', buttonClass: 'ht-style-button' }, window.HT_STYLE_MOUNT || {});
 
 const state = { profile: null, matches: {}, busy: false, error: '' };
 let button = null, input = null, panel = null, gridObserver = null, raf = 0;
@@ -113,18 +116,18 @@ function renderPanel() {
 /* ---------------- badges on the grid cards ---------------- */
 function applyBadges() {
   raf = 0;
-  document.querySelectorAll('#property-grid .property-card[data-home-id]').forEach((card) => {
-    const m = state.matches[card.dataset.homeId]; let b = card.querySelector('.ht-style-badge');
+  document.querySelectorAll(CFG.grid + ' ' + CFG.card).forEach((card) => {
+    const m = state.matches[card.dataset[CFG.idAttr]]; let b = card.querySelector('.ht-style-badge');
     if (!m) { if (b) b.remove(); return; }
     const text = `Style ${m.score}%`; if (b && b.textContent === text) return;
-    if (!b) { b = el('span', 'ht-style-badge'); (card.querySelector('.property-image-wrap') || card).append(b); }
+    if (!b) { b = el('span', 'ht-style-badge'); (card.querySelector(CFG.imageWrap) || card).append(b); }
     b.textContent = text;
     b.title = [m.reasons && m.reasons.length ? 'Matches: ' + m.reasons.join(', ') : '', m.misses && m.misses.length ? 'Differs: ' + m.misses.join('; ') : '', SOFT + (m.basis ? ' · ' + m.basis : '')].filter(Boolean).join('\n');
   });
 }
 const scheduleBadges = () => { if (!raf) raf = requestAnimationFrame(applyBadges); };
 function watchGrid() {
-  const grid = document.querySelector('#property-grid'); if (!grid || gridObserver) return;
+  const grid = document.querySelector(CFG.grid); if (!grid || gridObserver) return;
   gridObserver = new MutationObserver(scheduleBadges); gridObserver.observe(grid, { childList: true, subtree: true }); scheduleBadges();
 }
 
@@ -136,15 +139,15 @@ function mount() {
     document.body.append(input);
   }
   if (!button) {
-    button = el('button', 'ht-style-button', 'Looks like this'); button.type = 'button';
+    button = el('button', CFG.buttonClass, 'Looks like this'); button.type = 'button';
     button.title = 'Pick one to three photos of rooms you like; every place gets a style match (a soft preference, not a filter)';
     button.addEventListener('click', pick);
   }
-  const controls = document.querySelector('#collection-controls');
+  const controls = document.querySelector(CFG.controls);
   if (controls) { if (button.parentNode !== controls) controls.append(button); }
-  else { const fo = document.querySelector('#filters-open'); if (fo && button.parentNode !== fo.parentNode) fo.after(button); }
+  else { const fo = CFG.controlsAlt && document.querySelector(CFG.controlsAlt); if (fo && button.parentNode !== fo.parentNode) fo.after(button); }
   if (!panel) { panel = el('div', 'ht-style-panel'); panel.id = 'ht-style-panel'; panel.hidden = true; panel.setAttribute('aria-live', 'polite'); }
-  const grid = document.querySelector('#property-grid');
+  const grid = document.querySelector(CFG.grid);
   if (grid) { if (panel.parentNode !== grid.parentNode) grid.before(panel); }
   else if (!panel.parentNode) { const dock = document.querySelector('#dock'); if (dock) dock.append(panel); }
   watchGrid();
