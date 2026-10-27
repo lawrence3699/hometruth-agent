@@ -89,13 +89,13 @@
 
 ```
  你说的话 ──► [ Meterless Nightshift ] ──► [ NVIDIA Nemotron ]
-               （这台电脑上的“交换机”）      （读懂你、读照片、读中介回复）
+               （“总机”，把请求转给 Nemotron）      （读懂你、读照片、读中介回复）
                                                    │
                七个来源 ◄── [ Zetaris ] ◄───────────┘
 ```
 
 **旁白**：
-> In plain words: Zetaris asks the questions. NVIDIA Nemotron does the reading. And Meterless Nightshift, on this laptop, hands the language requests to Nemotron.
+> In plain words: Zetaris asks the questions. NVIDIA Nemotron does the reading. And Meterless Nightshift passes the language requests to Nemotron.
 
 ### 收尾（1:44–1:50）　Impact
 
