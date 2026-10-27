@@ -95,6 +95,12 @@ def log(entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+
+# Shown where a listing or illustration photo would be: the public repository leaves those photos out (they belong to the agencies).
+PHOTO_PLACEHOLDER = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#eef0f3"/>'
+                     b'<text x="200" y="156" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="18" fill="#8a919c">'
+                     b'Photo not included in the public repo</text></svg>')
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "HomeTruthVoice/0.1"
 
@@ -123,6 +129,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _file(self, p: Path) -> None:
         if not p.is_file():
+            if p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):  # public repo: listing and illustration photos are not included
+                return self._send(200, PHOTO_PLACEHOLDER, "image/svg+xml")
             return self._json(404, {"error": "not found"})
         ctype = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
         if ctype.startswith("text/") or ctype in ("application/javascript",):

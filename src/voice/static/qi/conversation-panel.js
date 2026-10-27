@@ -9,7 +9,7 @@ export function createConversationPanel({onSubmit,onVoiceToggle,onEnd,onTyping,o
   let lastStatus='idle', statusOverride='';
   let orb=orbController, turns=[], lastMessage='', draft='', promptOptions=[], resultCount=0, context='', elapsed=0;
   const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;};
-  const icon=name=>{const image=node('img','agent-icon');image.src=new URL(`./assets/elevenlabs/${({microphone:'call',expand:'collapse','end-call':'end'})[name]||name}.svg`,import.meta.url).href;image.alt='';image.width=image.height=20;return image;};
+  const icon=name=>{const image=node('img','agent-icon');image.src=new URL(`./assets/icons/${({microphone:'call',expand:'collapse','end-call':'end'})[name]||name}.svg`,import.meta.url).href;image.alt='';image.width=image.height=20;return image;};
   const button=(cls,label,name,action)=>{const b=node('button',cls);b.type='button';b.setAttribute('aria-label',label);b.title=label;if(name)b.append(icon(name));if(action)b.addEventListener('click',action);return b;};
   const panel=node('section','agent-panel');panel.id='agent-panel';panel.hidden=true;panel.setAttribute('role','dialog');panel.setAttribute('aria-label','Talk to HomeTruth');
   const header=node('header','agent-header');

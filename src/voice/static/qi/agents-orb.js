@@ -1,11 +1,17 @@
 /**
- * Standalone adapter for the existing ElevenLabs Agents marketing Orb.
- * The original PNG, texture, fluid simulation and shaders are retained.
- * Provenance and exact adaptations: assets/elevenlabs/orb-source-manifest.json.
- * This module never starts audio capture, a call, or a remote agent session.
+ * The voice orb: a small canvas drawing of our own (public repository version).
+ * Same interface the pages use: createAgentsOrb(host) → { ready, setState(state), setLevel(0..1), destroy() },
+ * states idle / listening / thinking / speaking / error, and an 'agents-orb-ready' event on the host.
+ * The hosted demo uses ElevenLabs' marketing orb renderer, which we do not redistribute.
  */
-const asset = name => new URL(`./assets/elevenlabs/${name}`, import.meta.url).href;
 const states = new Set(['idle', 'listening', 'thinking', 'speaking', 'error']);
+const PALETTE = {  // [base inner, base outer, blob A, blob B]
+  idle: ['#e8f1ff', '#6b8fd6', '#7fd1c7', '#f2c879'],
+  listening: ['#e6f4ff', '#3d7be0', '#58c4dd', '#9bd88f'],
+  thinking: ['#eef0f6', '#7d86a8', '#a9b4d8', '#c9b8e8'],
+  speaking: ['#eaf2ff', '#2f6fdc', '#4fd1c5', '#f6c453'],
+  error: ['#fff0ee', '#d0644f', '#f2a08f', '#f6c453'],
+};
 
 export function createAgentsOrb(host) {
   if (!host || host.nodeType !== 1) throw new TypeError('createAgentsOrb requires a DOM element');
@@ -13,140 +19,85 @@ export function createAgentsOrb(host) {
   const holder = document.createElement('span');
   holder.className = 'agents-original-orb';
   holder.dataset.state = 'idle';
-  holder.dataset.renderer = 'loading';
+  holder.dataset.renderer = 'canvas';
   holder.setAttribute('aria-hidden', 'true');
-  holder.style.cssText = 'position:relative;display:block;width:100%;height:100%;overflow:hidden;border-radius:50%;isolation:isolate;pointer-events:none';
+  holder.style.cssText = 'position:relative;display:block;width:100%;height:100%;overflow:hidden;border-radius:50%;pointer-events:none';
   if (!(parseFloat(getComputedStyle(host).height) > 0)) holder.style.width = holder.style.height = '160px';
-  const fallback = document.createElement('img');
-  fallback.src = asset('orb-agents-2.png');
-  fallback.alt = '';
-  fallback.width = fallback.height = 512;
-  fallback.decoding = 'async';
-  fallback.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;border-radius:50%';
-  const surface = document.createElement('span');
-  surface.style.cssText = 'position:absolute;inset:0;display:block;opacity:0;transition:opacity 400ms ease';
-  const grain = document.createElement('span');
-  grain.style.cssText = `position:absolute;inset:0;mix-blend-mode:overlay;opacity:.5;image-rendering:pixelated;background-image:url("${asset('orb-noise.png')}");background-size:${devicePixelRatio >= 2 ? 128 : 256}px;pointer-events:none;border-radius:50%`;  // the grain layer clips itself to the circle: Chrome left it square behind the Orb at 160px (overflow+radius on the holder alone did not clip it)
-  holder.append(fallback, surface, grain);
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
+  holder.append(canvas);
   host.append(holder);
+  const ctx = canvas.getContext('2d');
 
-  let renderer = null, disposed = false, frame = 0, lastTime = 0, state = 'idle';
-  let visible = true, manualLevel = null;
-  let pendingLayout = null, resolveDestroyed;
-  const destroyedReady = new Promise(resolve => { resolveDestroyed = resolve; });
-  function emit(name, detail) { host.dispatchEvent(new CustomEvent(name, { detail })); }
-  function hasSize() { return surface.clientWidth > 0 && surface.clientHeight > 0; }
-  function canPaint() { return renderer && renderer.loaded && !disposed && !document.hidden && visible && hasSize(); }
-  function shouldAnimate() { return canPaint() && !reduced.matches && state !== 'error'; }
-  function audioBands(level) { return {low:level, mid:level*.68, high:level*.28, all:level*.74}; }
-  function advance(now) {
-    frame = 0;
-    if (!shouldAnimate()) return;
-    const dt = Math.min(.05, Math.max(.001, (now - (lastTime || now - 16.667)) / 1000));
-    lastTime = now;
-    const phase = now / 1000;
-    // UI-state feedback only. Real measured levels can be supplied through setLevel().
-    const output = state === 'speaking'
-      ? (manualLevel ?? (.18 + .10 * Math.sin(phase*3.6) ** 2 + .06 * Math.sin(phase*7.1) ** 2))
-      : state === 'thinking' ? .025 : 0;
-    const input = state === 'listening' ? (manualLevel ?? (.08 + .05 * Math.sin(phase*2.4) ** 2)) : 0;
-    try {
-      renderer.setAudioData(audioBands(output), audioBands(input), dt);
-      renderer.update(dt);
-      frame = requestAnimationFrame(advance);
-    } catch (error) { fail(error); }
+  let state = 'idle', level = null, shown = 0, frame = 0, disposed = false, visible = true;
+  function size() {
+    const r = holder.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   }
-  function sync() {
-    if (frame) cancelAnimationFrame(frame);
-    frame = 0;
-    lastTime = 0;
-    if (!canPaint()) return;
-    try {
-      if (shouldAnimate()) frame = requestAnimationFrame(advance);
-      else { renderer.setAudioData(null, null, 0); renderer.update(0); }
-    } catch (error) { fail(error); }
+  function blob(x, y, r, color) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color); g.addColorStop(1, color + '00');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
-  function fail(error) {
+  function draw(now) {
+    size();
+    const w = canvas.width, h = canvas.height, R = Math.min(w, h) / 2, cx = w / 2, cy = h / 2, t = now / 1000;
+    const [inner, outer, a, b] = PALETTE[state];
+    // how lively: the measured level when we have one, otherwise a gentle state-dependent breath
+    const auto = state === 'speaking' ? 0.35 + 0.25 * Math.sin(t * 3.4) ** 2 : state === 'listening' ? 0.2 + 0.1 * Math.sin(t * 2.2) ** 2 : state === 'thinking' ? 0.15 : 0.08;
+    shown += ((level ?? auto) - shown) * 0.15;
+    const speed = state === 'thinking' ? 1.6 : 0.5 + shown;
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+    const base = ctx.createRadialGradient(cx - R * 0.3, cy - R * 0.35, R * 0.1, cx, cy, R);
+    base.addColorStop(0, inner); base.addColorStop(1, outer);
+    ctx.fillStyle = base; ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'lighter';
+    blob(cx + Math.cos(t * speed) * R * 0.38, cy + Math.sin(t * speed * 0.8) * R * 0.32, R * (0.65 + shown * 0.35), a + '99');
+    blob(cx + Math.cos(t * speed * 0.7 + 2) * R * 0.42, cy + Math.sin(t * speed * 1.1 + 1) * R * 0.36, R * (0.55 + shown * 0.3), b + '80');
+    ctx.globalCompositeOperation = 'source-over';
+    const shine = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.45, 0, cx - R * 0.35, cy - R * 0.45, R * 0.7);
+    shine.addColorStop(0, 'rgba(255,255,255,0.55)'); shine.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = shine; ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
+  function loop(now) {
+    frame = 0;
     if (disposed) return;
-    if (frame) cancelAnimationFrame(frame);
-    frame = 0;
-    try { renderer?.dispose(); } catch {}
-    renderer = null;
-    surface.replaceChildren();
-    surface.style.opacity = '0';
-    holder.dataset.renderer = 'original-image-fallback';
-    emit('agents-orb-error', error);
+    draw(now);
+    if (visible && !document.hidden && !reduced.matches) frame = requestAnimationFrame(loop);
   }
-  const resize = new ResizeObserver(() => {
-    if (disposed || !hasSize()) return;
-    if (pendingLayout) { pendingLayout(true); pendingLayout = null; }
-    if (!renderer) return;
-    try { renderer.resize(); if (canPaint()) renderer.update(0); } catch (error) { fail(error); }
-  });
-  resize.observe(surface);
-  const intersection = new IntersectionObserver(entries => {
-    visible = entries[0]?.isIntersecting ?? true;
-    sync();
-  }, {rootMargin:'32px'});
+  function sync() { if (frame) cancelAnimationFrame(frame); frame = requestAnimationFrame(loop); }
+  const resize = new ResizeObserver(() => sync());
+  resize.observe(holder);
+  const intersection = new IntersectionObserver((entries) => { visible = entries[0]?.isIntersecting ?? true; sync(); }, { rootMargin: '32px' });
   intersection.observe(holder);
-  const onVisibility = () => sync();
-  const onReduced = () => { surface.style.transitionDuration = reduced.matches ? '0ms' : '400ms'; sync(); };
-  document.addEventListener('visibilitychange', onVisibility);
-  reduced.addEventListener('change', onReduced);
-
-  const loading = import('./assets/elevenlabs/orb-renderer.js').then(async ({MarketingOrbRenderer}) => {
-    if (disposed) return {renderer:false, destroyed:true};
-    if (!hasSize()) await new Promise(resolve => { pendingLayout = resolve; });
-    if (disposed) return {renderer:false, destroyed:true};
-    if (typeof WebGL2RenderingContext === 'undefined') throw new Error('WebGL2 is unavailable');
-    renderer = new MarketingOrbRenderer(surface, {animated:false, dpr:Math.min(devicePixelRatio || 1, 2), cornerRadius:Infinity, fadeInDuration:0, saturation:1, exposure:.15});
-    // Upstream loadTexture calls playOnce in non-animated mode; guard that late frame too.
-    const originalPlayOnce = renderer.playOnce.bind(renderer);
-    renderer.playOnce = () => { if (canPaint()) originalPlayOnce(); };
-    await renderer.loadTexture(asset('orb-agents-2-texture.jpg'));
-    if (disposed) return {renderer:false, destroyed:true};
-    const canvas = renderer.gl.canvas;
-    canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block';
-    if (!renderer.gl.getProgramParameter(renderer.program.program, renderer.gl.LINK_STATUS)) throw new Error('Original Orb shader failed to link');
-    if (canPaint()) { renderer.setAudioData(null, null, 0); renderer.update(1/60); }
-    surface.style.opacity = '1';
-    holder.dataset.renderer = 'original-webgl';
-    emit('agents-orb-ready', {renderer:'original-webgl'});
-    sync();
-    return {renderer:true};
-  }).catch(error => {
-    fail(error);
-    return {renderer:false, fallback:'original-image'};
-  });
-  const ready = Promise.race([loading, destroyedReady]);
+  document.addEventListener('visibilitychange', sync);
+  reduced.addEventListener('change', sync);
+  sync();
+  const ready = Promise.resolve({ renderer: true });
+  queueMicrotask(() => host.dispatchEvent(new CustomEvent('agents-orb-ready', { detail: { renderer: 'canvas' } })));
 
   return {
     ready,
     setState(next) {
       if (disposed || !states.has(next)) return;
-      state = next;
-      manualLevel = null;
-      holder.dataset.state = state;
-      sync();
+      state = next; level = null; holder.dataset.state = state; sync();
     },
     setLevel(value) {
       if (disposed) return;
-      manualLevel = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+      level = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
     },
     destroy() {
       if (disposed) return;
       disposed = true;
-      resolveDestroyed({renderer:false, destroyed:true});
-      if (pendingLayout) { pendingLayout(false); pendingLayout = null; }
       if (frame) cancelAnimationFrame(frame);
-      frame = 0;
-      resize.disconnect();
-      intersection.disconnect();
-      document.removeEventListener('visibilitychange', onVisibility);
-      reduced.removeEventListener('change', onReduced);
-      try { renderer?.dispose(); } catch {}
-      renderer = null;
+      resize.disconnect(); intersection.disconnect();
+      document.removeEventListener('visibilitychange', sync);
+      reduced.removeEventListener('change', sync);
       holder.remove();
-    }
+    },
   };
 }
