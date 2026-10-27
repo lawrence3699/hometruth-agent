@@ -1165,7 +1165,9 @@ class Session:
                 changed, self.parse_meta = parse_needs_llm(text, self.profile, pending, started=started)
             else:
                 changed, self.parse_meta = parse_into(self.profile, text, pending), rules_meta()
-        else:  # 提问、续播、中介回复等：和原来一样只用规则
+        elif kind == "agent_reply" and self.plan:  # 中介说的话不是租客的需求："no pets in that building" 不能把租客的猫抹掉（10-27 KeyError 'J1'）
+            changed = {}
+        else:  # 提问、续播等：和原来一样只用规则
             changed = parse_into(self.profile, text, pending)
         self._restated(changed)
         if kind == "agent_reply" and self.plan:
@@ -1520,8 +1522,16 @@ class Session:
         self.changes.append(change)
         consequence = ""
         if before != after and after:
-            top = next(it for it in self.ranked if it["listing"]["id"] == after[0])["listing"]
-            consequence = f"That moves {top['street']} to the top." if after[0] != before[0] else "The order stays the same."
+            street_of = lambda lid: next(it for it in self.ranked if it["listing"]["id"] == lid)["listing"]["street"]
+            new_in = [lid for lid in after if lid not in before]
+            if after[0] != before[0]:
+                consequence = f"That moves {street_of(after[0])} to the top."
+            elif L["id"] in before and L["id"] not in after and new_in:  # 掉出前三，有一套补进来（以前这里说 "The order stays the same."，不对）
+                consequence = f"That drops it out of the top {len(after)}; {street_of(new_in[0])} comes in."
+            elif L["id"] in after:
+                consequence = f"It is now number {after.index(L['id']) + 1}."
+            else:
+                consequence = "The order changes."
         return {"status": "changed", "change": change, "dim": dim, "to": new, "consequence": consequence, "reader": meta, "event_id": eid}
 
     def _reply_ui(self, ch: dict) -> Iterator[dict]:
