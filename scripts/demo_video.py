@@ -8,8 +8,9 @@ letter by letter), and keep two things on one clock: the screencast frames and t
 The page speaks through Web Audio (app.js player), so an init script wraps AudioBufferSourceNode.start / stop and remembers each
 buffer, when it started, from which offset and when it was cut (interruptions). After the run the buffers are read back and laid on a
 silent track at those times: the sound in the video is exactly what a person in the room would have heard.
-Frames come from Page.startScreencast (JPEG q90, 1920×1080: viewport 1280×720 at 1.5×), only when the page repaints; assemble holds
-each frame until the next one (variable → constant 30 fps). Marks (scene names) are written at the moment the step runs.
+Frames: Page.startScreencast only delivers frames at the CSS size (1280×720, it ignores the 1.5× device scale), so frames are taken
+with Page.captureScreenshot in a loop instead (1920×1080 JPEG q88, about 15–20 a second, each stamped with the middle of its capture);
+assemble holds each frame until the next one (variable → constant 30 fps). Marks (scene names) are written at the moment the step runs.
 The edit (cuts, captions, narration, title cards) is scripts/demo_video_edit.py; this file only records.
 Chrome debugging port 9346 (ui_screenshots.py uses 9343/9344, cardflow 9333)."""
 import asyncio, base64, json, math, os, random, subprocess, sys, tempfile, time, urllib.request, wave
@@ -23,7 +24,7 @@ SR = 48000
 NEED = "Two bedrooms near UNSW, I have a cat, and I'd like air con in the bedroom."
 ANSWER = "Under 900, mid-November."
 QUESTION = "Is the first one close to UNSW?"
-REPLY = "The agent at Alder Lane says the split system is in the living room only."
+REPLY = "The agent at Alder Lane says no pets in that building, sorry."  # pets is a must-have here: the cell flips to conflict and the place drops out of the top three
 
 # Wraps Web Audio playback (what the page says), draws a cursor that follows the real mouse events, and a click ripple.
 # The cursor is a manual popover so it can be lifted above an open <dialog> (top layer): __curTop() re-shows it last.
@@ -101,8 +102,9 @@ class CDP:
 class Driver:
     """Person-like input: the mouse glides (eased) and the page's own cursor follows the real mouse events."""
 
-    def __init__(self, cdp, out):
+    def __init__(self, cdp, out, lock=None):
         self.cdp, self.out, self.x, self.y = cdp, out, W * 0.62, H * 0.75
+        self.lock = lock or asyncio.Lock()  # input events sent while a screenshot is being taken get dropped: the two take turns
         self.marks, self.t0 = [], time.time()
 
     def log(self, msg):
@@ -119,13 +121,16 @@ class Driver:
             k = i / n
             e = k * k * (3 - 2 * k)  # smoothstep
             self.x, self.y = x0 + (x - x0) * e, y0 + (y - y0) * e
-            await self.cdp.call("Input.dispatchMouseEvent", type="mouseMoved", x=self.x, y=self.y)
+            async with self.lock:
+                await self.cdp.call("Input.dispatchMouseEvent", type="mouseMoved", x=self.x, y=self.y)
             await asyncio.sleep(dur / n)
 
     async def center(self, sel):
+        # the page has scroll-behavior: smooth, so a plain scrollIntoView animates and the rect read right after it is stale
         r = await self.cdp.js(f"(() => {{ const e = document.querySelector({json.dumps(sel)}); if (!e) return null;"
-                              " e.scrollIntoView({block: 'nearest', inline: 'nearest'}); const b = e.getBoundingClientRect();"
-                              " return [b.left + b.width / 2, b.top + b.height / 2, b.width, b.height]; })()")
+                              " e.scrollIntoView({block: 'nearest', inline: 'nearest', behavior: 'instant'});"
+                              " return new Promise(res => requestAnimationFrame(() => requestAnimationFrame(() => { const b = e.getBoundingClientRect();"
+                              " res([b.left + b.width / 2, b.top + b.height / 2, b.width, b.height]); }))); })()")
         if not r:
             raise RuntimeError(f"no element {sel}")
         return r
@@ -134,29 +139,41 @@ class Driver:
         x, y, w, h = await self.center(sel)
         await self.move(x + random.uniform(-w, w) * 0.12, y + random.uniform(-h, h) * 0.12, dur)
         await asyncio.sleep(settle)
-        for t in ("mousePressed", "mouseReleased"):
-            await self.cdp.call("Input.dispatchMouseEvent", type=t, x=self.x, y=self.y, button="left", clickCount=1)
-            await asyncio.sleep(0.07)
+        async with self.lock:
+            for t in ("mousePressed", "mouseReleased"):
+                await self.cdp.call("Input.dispatchMouseEvent", type=t, x=self.x, y=self.y, button="left", clickCount=1)
+                await asyncio.sleep(0.07)
         await self.cdp.js("window.__curTop && __curTop()")
+        ok = await self.cdp.js(f"(() => {{ const e = document.querySelector({json.dumps(sel)}); if (!(e instanceof HTMLInputElement)) return 'not an input';"
+                               " if (document.activeElement === e) return 'focused'; e.focus(); return 'focused by script'; })()")
+        if ok == "focused by script":
+            self.log(f"click on {sel} missed the focus; focused it by script")
 
     async def type(self, text, cps=16):
         for ch in text:
-            await self.cdp.call("Input.insertText", text=ch)
+            async with self.lock:
+                await self.cdp.call("Input.insertText", text=ch)
             await asyncio.sleep(random.uniform(0.6, 1.4) / cps + (0.12 if ch in ",." else 0))
 
     async def enter(self):
+        async with self.lock:
+            await self._enter()
+
+    async def _enter(self):
         for t in ("keyDown", "keyUp"):
             await self.cdp.call("Input.dispatchKeyEvent", type=t, key="Enter", code="Enter", windowsVirtualKeyCode=13,
                                 nativeVirtualKeyCode=13, **({"text": "\r"} if t == "keyDown" else {}))
 
     async def key(self, key, code=None, vk=0):
-        for t in ("keyDown", "keyUp"):
-            await self.cdp.call("Input.dispatchKeyEvent", type=t, key=key, code=code or key, windowsVirtualKeyCode=vk)
+        async with self.lock:
+            for t in ("keyDown", "keyUp"):
+                await self.cdp.call("Input.dispatchKeyEvent", type=t, key=key, code=code or key, windowsVirtualKeyCode=vk)
 
     async def wheel(self, dy, dur=1.2):
         n = max(6, int(dur * 30))
         for i in range(n):
-            await self.cdp.call("Input.dispatchMouseEvent", type="mouseWheel", x=self.x, y=self.y, deltaX=0, deltaY=dy / n)
+            async with self.lock:
+                await self.cdp.call("Input.dispatchMouseEvent", type="mouseWheel", x=self.x, y=self.y, deltaX=0, deltaY=dy / n)
             await asyncio.sleep(dur / n)
 
     async def wait(self, cond, timeout):
@@ -180,7 +197,7 @@ async def scenario(d):
     await asyncio.sleep(0.6)
     await d.enter()
     d.mark("need_sent")
-    await d.wait(f"/budget/i.test({CAPTION})", 30)
+    await d.wait(f"/budget/i.test({CAPTION}) && HT.S.playing", 30)  # the question is being said (the caption shows before the audio starts)
     await d.wait(QUIET, 30)
     await asyncio.sleep(0.9)
 
@@ -207,7 +224,7 @@ async def scenario(d):
     d.mark("question_sent")
     await d.wait(f"/^Third|last one/i.test({CAPTION})", 300)
     d.mark("card3")
-    await d.wait(f"/top three/i.test({CAPTION})", 240)
+    await d.wait(f"/top three/i.test({CAPTION}) && HT.S.playing", 240)
     d.mark("wrap")
     await d.wait(QUIET, 90)
     await asyncio.sleep(1.0)
@@ -219,41 +236,46 @@ async def scenario(d):
     d.mark("reply_sent")
     await d.wait("+(document.querySelector('#changes-count') || {}).textContent > 0", 40)
     d.mark("changed")
+    await d.wait(f"/Noted|conflict/i.test({CAPTION}) && HT.S.playing", 20)
     await d.wait(QUIET, 60)
     await asyncio.sleep(1.5)
+    # the database views sit under the callout: bring them up first, or the tab click only scrolls them to the bottom edge
+    await js("(() => { const v = document.querySelector('#views'); window.scrollTo({top: v.getBoundingClientRect().top + scrollY - 150, behavior: 'smooth'}); })()")
+    await asyncio.sleep(1.4)
     await d.click("#views [data-view=changes]")
     d.mark("view_changes")
-    await asyncio.sleep(4.5)
+    await asyncio.sleep(5.5)
     await d.click("#views [data-view=table]")
     d.mark("view_table")
-    await asyncio.sleep(4.5)
+    await asyncio.sleep(5.5)
     await d.click("#views [data-view=walk]")
-    await asyncio.sleep(1.5)
+    await asyncio.sleep(1.0)
+    if await js("!!document.querySelector('#agent-panel:not([hidden]) button[aria-label=\"Minimize conversation\"]')"):
+        await d.click('#agent-panel button[aria-label="Minimize conversation"]')  # the gallery needs the whole width
+        await asyncio.sleep(0.8)
 
     d.mark("to_explore")
     await js("document.querySelector('#explore').scrollIntoView({behavior: 'smooth', block: 'start'})")
     await asyncio.sleep(2.5)
     await d.click("#ex-filter [data-f=real]")
     d.mark("real_filter")
-    await asyncio.sleep(2.5)
-    await d.wheel(520, 2.2)
-    await asyncio.sleep(1.5)
-    await d.wheel(-520, 1.2)
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(2.0)
+    await d.wheel(380, 1.8)
+    await asyncio.sleep(1.2)
 
-    # a real place with a floor plan (Botany Street, Domain sample): its own photos, checks with sources, the 3D plan
-    sel = ".nt-gcard[data-open='L-D17153470']"
+    # a real place whose photos carry "this advert has been digitally furnished" (Day Avenue, Domain): Nemotron VL read it
+    sel = ".nt-gcard[data-open='L-D14397815']"
     if not await js(f"!!document.querySelector({json.dumps(sel)})"):
         sel = ".nt-gcard[data-open^='L-D']"
-    await d.click(sel)
+    await d.click(sel, dur=0.9)
     d.mark("peek_open")
     await d.wait("document.querySelector('#peek').open", 10)
     await js("window.__curTop && __curTop()")
-    await asyncio.sleep(3)
+    await asyncio.sleep(3.5)
     await d.move(W * 0.5, H * 0.6, 0.6)
     for _ in range(5):
         await d.wheel(430, 1.4)
-        await asyncio.sleep(1.6)
+        await asyncio.sleep(1.8)
     d.mark("peek_scrolled")
     await asyncio.sleep(1.5)
     await d.key("Escape", "Escape", 27)
@@ -285,26 +307,33 @@ async def record(base, out):
             cdp = CDP(ws)
             reader = asyncio.create_task(cdp.reader())
 
-            def on_frame(p):
-                n[0] += 1
-                name = f"{n[0]:06d}.jpg"
-                with open(os.path.join(out, "frames", name), "wb") as f:
-                    f.write(base64.b64decode(p["data"]))
-                frames.write(json.dumps({"f": name, "t": p["metadata"].get("timestamp")}) + "\n")
-                asyncio.create_task(cdp.call("Page.screencastFrameAck", sessionId=p["sessionId"]))
-            cdp.handlers["Page.screencastFrame"] = on_frame
+            stop, lock = asyncio.Event(), asyncio.Lock()
+
+            async def grab():
+                while not stop.is_set():
+                    async with lock:
+                        t = time.time()
+                        r = await cdp.call("Page.captureScreenshot", format="jpeg", quality=88, optimizeForSpeed=True)
+                        t1 = time.time()
+                    await asyncio.sleep(0)
+                    n[0] += 1
+                    name = f"{n[0]:06d}.jpg"
+                    with open(os.path.join(out, "frames", name), "wb") as f:
+                        f.write(base64.b64decode(r["data"]))
+                    frames.write(json.dumps({"f": name, "t": (t + t1) / 2}) + "\n")
             await cdp.call("Page.enable"); await cdp.call("Runtime.enable")
             await cdp.call("Emulation.setDeviceMetricsOverride", width=W, height=H, deviceScaleFactor=SCALE, mobile=False)
             await cdp.call("Page.addScriptToEvaluateOnNewDocument", source=INIT)
             await cdp.call("Page.navigate", url=base.rstrip("/") + "/")
             await asyncio.sleep(1.5)
-            d = Driver(cdp, out)
-            await cdp.call("Page.startScreencast", format="jpeg", quality=90, maxWidth=int(W * SCALE), maxHeight=int(H * SCALE), everyNthFrame=1)
+            d = Driver(cdp, out, lock)
+            grabber = asyncio.create_task(grab())
             d.mark("start")
             try:
                 await scenario(d)
             finally:
-                await cdp.call("Page.stopScreencast")
+                stop.set()
+                await grabber
                 json.dump(d.marks, open(os.path.join(out, "marks.json"), "w"), indent=1)
                 await dump_audio(cdp, out)
             reader.cancel()
@@ -370,6 +399,12 @@ def assemble(out, fps=30):
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes((track * 32767).astype(np.int16).tobytes())
     secs = [{"name": m["name"], "s": round(m["t"] - t0, 2)} for m in marks]
     json.dump(secs, open(os.path.join(out, "marks_s.json"), "w"), indent=1)
+    said = []  # each sentence the page played, on the video's clock (cut = stopped early by an interruption)
+    for c in meta["clips"]:
+        s = c["t"] / 1000 - t0
+        e = (min(c["stop"], c["end"] or c["stop"]) if c.get("stop") else (c.get("end") or c["t"] + (c["dur"] - c["offset"]) * 1000)) / 1000 - t0
+        said.append({"s": round(s, 3), "e": round(e, 3), "text": c.get("text", ""), "cut": bool(c.get("stop") and (not c.get("end") or c["stop"] < c["end"]))})
+    json.dump(said, open(os.path.join(out, "said_s.json"), "w"), indent=1)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", "raw.mp4", "-i", "app_audio.wav", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                     "-shortest", "raw_with_audio.mp4"], cwd=out, check=True)
     for m in secs:
