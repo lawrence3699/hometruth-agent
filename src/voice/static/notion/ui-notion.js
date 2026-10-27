@@ -456,7 +456,8 @@ window.HTUI = (() => {
       }
       // edge-to-edge photo strip (the listing's first photos, one big + two small), then rank, address and the icon row on one line
       const pics = [...new Set([...(C.images || []).map((im) => im.url), coverOf(L)].filter(Boolean))].slice(0, 3);
-      const html_ = `<article class="nt-place" data-id="${esc(L.id)}">
+      // on a wide card (container query in notion.css) the photos sit on the left and stay in view while the checks run on the right
+      const html_ = `<article class="nt-place" data-id="${esc(L.id)}"><div class="nt-place-body${pics.length ? ' has-cover' : ''}">
         ${pics.length ? `<div class="nt-cover n${pics.length}">${pics.map((src, i) => `<button type="button" class="nt-cover-t" data-open="${esc(L.id)}" aria-label="Open the page for ${esc(street)}"${i ? ' tabindex="-1"' : ''}><img src="${esc(pic(src))}" alt=""${i ? ' loading="lazy"' : ''}></button>`).join('')}</div>` : ''}
         <div class="nt-place-in">
           <div class="nt-place-head">
@@ -468,7 +469,7 @@ window.HTUI = (() => {
           <div class="nt-checks" role="list">${rowsHTML}</div>
           ${special}
           <div class="nt-place-acts"><button type="button" class="nt-btn nt-btn-secondary nt-btn-sm" data-open="${esc(L.id)}">Open page</button><span class="nt-place-credit">Photos: ${esc(photoTag(C.id ? C : L))}</span></div>
-        </div></article>`;
+        </div></div></article>`;
       let host = $('.nt-walk', el.walk);
       if (!host) { el.walk.innerHTML = '<div class="nt-walk"><div id="main-slot"></div><aside class="nt-others" id="others"></aside></div>'; host = $('.nt-walk', el.walk); }
       const slot = $('#main-slot', host); const isNew = !slot.firstElementChild || slot.firstElementChild.dataset.id !== L.id;
