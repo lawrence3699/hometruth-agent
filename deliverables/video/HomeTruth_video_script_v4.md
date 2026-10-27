@@ -2,6 +2,7 @@
 
 2026-10-27 · 超亮：“一句话的故事是不是不好，要不要像介绍产品一样介绍有哪些特点？比如可以直接自然语言或者语音进行沟通筛选。”
 v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话 + 收尾。取代 v3（v3 的评分对照、赞助商说明、事实依据都搬过来了）。
+10-27 改：第 5 点原来是“查不到的变成问题、中介回复后重排”，超亮看不懂 → 换成 **Find your style（装修风格匹配）**；“该问中介哪一句”压成一句留在第 3 点。
 视频里的台词和屏幕字是英文；画面说明和备注是中文。
 
 ---
@@ -11,18 +12,19 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 - **同意按特点介绍**：评委一眼能数出“这产品能干哪几件事”，Demo（15）和 UX（10）更好打分。
 - **但开场留 12 秒痛点**：Impact 占 30 分、平局也先比它。没有“为什么需要”，五个特点就只是功能清单。
 - **每个特点 = 一张标题卡 + 现场演示**：标题卡一句话说清特点，紧接着在网站上真操作给你看，不只是嘴上说。
-- **五个特点按“用户实际用的顺序”排**：说需求 → 它去查 → 给你看依据 → 读照片 → 帮你问中介。顺着看就是一次完整使用。
+- **五个特点按“用户实际用的顺序”排**：说需求 → 它去查 → 给你看依据 → 帮你看穿照片 → 按你的口味再挑一遍。顺着看就是一次完整使用。
+- **第 4、5 点都是看图，但讲的是两件事**：第 4 点是“揭穿”（照片里的家具是假的），第 5 点是“懂你的口味”（你喜欢的风格哪套最像）。旁白和标题要把这个区别说出来。
 
 ### 评分对照
 
 | 评分项 | 分值 | 靠哪几个镜头 |
 |---|---:|---|
 | Impact | 30 | 开场（真照片 + 真数字）、收尾 |
-| Technical | 20 | 特点 2（七个来源同时查）、特点 5（回复一来当场重算并记日志）、赞助商镜头 |
-| Innovation | 15 | 特点 3（四种标签，从不把“可能”说成“是”）、特点 4（读出照片上的小字）、特点 5（查不到的变成问题） |
+| Technical | 20 | 特点 2（七个来源同时查）、特点 5（看一张照片就给几百套房打风格分）、赞助商镜头 |
+| Innovation | 15 | 特点 3（四种标签，从不把“可能”说成“是”；查不到的告诉你该问中介哪一句）、特点 4（读出照片上的小字）、特点 5（用一张照片表达口味） |
 | Demo | 15 | 特点 1–5 全是真房源、真操作 |
-| UX | 10 | 特点 1（直接说话 / 打字，只问缺的两样） |
-| 赞助商技术 | 10 | 特点 2、特点 4、赞助商镜头 |
+| UX | 10 | 特点 1（直接说话 / 打字，只问缺的两样）、特点 5（不用描述风格，传张照片就行） |
+| 赞助商技术 | 10 | 特点 2、特点 4、特点 5、赞助商镜头 |
 
 ---
 
@@ -79,7 +81,7 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 **旁白**：
 > Listings, photos, floor plans, agent replies, rent records, transit, sunlight. Seven sources, queried at once through Zetaris, and every fact keeps its receipt.
 
-### 特点 3 · 每一行都写明依据（0:46–1:08）　Innovation + Explain Why
+### 特点 3 · 每一行都写明依据（0:46–1:12）　Innovation + Explain Why
 
 **标题卡**：`3 · Every line shows what backs it`
 
@@ -93,7 +95,10 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 
 **屏幕字**（放大 Pets 时）：`Pets: the listing says "Pets allowed". Not in writing yet.`
 
-### 特点 4 · 它会看照片和户型图（1:08–1:20）　Innovation + NVIDIA
+**App**（紧接着，网页实际台词；放大 “Best question for this agent” 那行）：
+> Best question for this agent: are pets allowed, in writing?
+
+### 特点 4 · 它会看照片和户型图（1:12–1:24）　Innovation + NVIDIA
 
 **标题卡**：`4 · It reads the photos`
 
@@ -102,23 +107,20 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 **旁白**：
 > NVIDIA Nemotron reads the listing photos and floor plans. Here it caught the fine print: the sofa, the armchair and the coffee table won't be there.
 
-### 特点 5 · 不知道的变成问题，中介一回复就更新（1:20–1:42）　Innovation + Technical
+### 特点 5 · 传一张喜欢的房间照片，按你的口味再挑（1:24–1:42）　UX + Innovation + NVIDIA
 
-**标题卡**：`5 · Unknowns become questions`
+**标题卡**：`5 · Find your style`
 
-**画面**：回到 Muller Lane，放大 “Best question for this agent”。租客贴进中介回复（正常速度）。Pets 从黄色 Inferred 翻成红色 Conflict（放大这一下），左侧 Shortlist 里 Muller Lane 掉出、113 Sutherland Street 补进。切到 Changes 视图停 2 秒。
+**画面**（都按网页现在的样子）：
+1. 滑到 “Every place I can check.” 房源墙，点筛选栏里的 “Looks like this”，选一张自己喜欢的房间照片（浅色木地板、明亮、简洁那种），照片在画面角上小窗停 1 秒。
+2. 面板显示 “Reading your photos…”（等待剪短），然后变成一排小标签：它读出来的地板、配色、光线、年代和几个风格词，后面一行 “Soft preference — not used for ranking · from 1 photo, N places scored”。放大这排标签。
+3. 房源墙上每张卡片封面角上同时冒出 `Style 78%` 这样的角标，往下滑一屏让人看到“每套都有”。
+4. 点开分数最高的一套真房源，滑到 Checked 列表最后一行 `Style match · 78% · timber floors, light palette · Soft preference`，点开它：`Matches: …` / `Misses: …` / `Basis: from 1 reference photo and the listing's lead photo`。放大这三行。
 
-**App**：
-> Best question for this agent: are pets allowed, in writing?
+**旁白**：
+> Can't describe your style? Show it a room you love. Nemotron reads the floor, the colours and the light, then scores every listing for the same feel, with what matches and what doesn't. It's a preference, so it never overrides your must-haves.
 
-**租客**（贴进去的中介回复）：
-> The agent for Muller Lane says no pets, sorry.
-
-**App**：
-> Noted. For the 1 Muller Lane place, pets goes from inferred to conflict. That drops it out of the top 3; 113 Sutherland Street comes in.
-
-**旁白**（Changes 视图上）：
-> The answer moved the shortlist, and every change is logged.
+**屏幕字**：卡片角上的分数出现时 `Style match`；最后 `Soft preference — never overrides your must-haves`
 
 ### 赞助商大白话（1:42–1:54）　赞助商技术
 
@@ -151,7 +153,7 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 |---|---|---|
 | `Interrupt any time` | 它正在讲第二套，租客插一句 “Is the first one close to UNSW?”，它停下回答，再说 “where was I”接着讲 | 打断五条标准（docs/00 §4.4），take3 里录到过 |
 | `It remembers you` | 第二天再打开：“Welcome back”，上次的需求还在；不在时到的中介邮件已经折进排名 | docs/08，inbox + 信念日志 |
-| `Find your style` | 传一张喜欢的房间照片，每套房多一个风格匹配分和理由（软偏好，不进排名） | src/photo/style.py，Nemotron VL |
+| `Agent replies update it` | 贴进中介回复 “no pets, sorry”：宠物那行变红，这套从推荐里拿掉、换一套补上，变化有记录 | 10-27 19:50 本机实测；先把旁白讲清楚再放 |
 
 ---
 
@@ -161,7 +163,7 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 2. **只用真房源**：Muller Lane、Day Avenue 都是真的；合成房源不上镜（导览前两套是合成的，直接跳到第三套）。
 3. **一个镜头只看一个地方**：要讲的那块放大 1.5–2 倍，收起右下浮窗；特点标题缩到左上角一直挂着。
 4. **来源角标**：真房源照片出现时左下角挂 “Domain listing … / realestate.com.au listing … · photo © the agency”。
-5. **打字不快进**（特点 5 贴回复那段）。
+5. **特点 5 的照片**：用团队自己拍的房间照片，或免版权图（Unsplash / Pexels），不能用真房源的挂牌照片（那是中介的，而且会自己匹配自己）。等 Nemotron 读图那几秒可以剪短，但读出来的结果要原样。
 6. **字幕**：旁白全程烧字幕，36 px 以上。旁白和 App 不重叠；背景音乐可选，压在 −24 LUFS 以下。
 7. **在 Mac 上录**（Nightshift 在 Mac 上，开着、窗口在前台），1080p 原生分辨率。
 
@@ -172,13 +174,13 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 ### 中文
 
 - **Zetaris = 我们“问问题”的唯一入口。** 一套房的信息散在七个地方：挂牌页、照片读出的事实、户型图、中介回复和小区规定、租金中位数、通勤时间、日照。每次搜索让 Zetaris 对七个来源各发一条 SQL，同时查。每条证据都记着是哪条 Zetaris 查询返回的，页面上能看到查询编号，悬停能看到 SQL。
-- **NVIDIA Nemotron = 负责“读”的大脑。** Nemotron 3.5 Lightning 读懂租客说的话（拆成预算、几房、地点、入住时间、宠物等检查项）、读懂中介回复（落到哪一格、变成什么状态）、把核对结果说成自然的话。Nemotron 3.5 Super VL 看挂牌照片和户型图：有没有“电脑摆的家具”、厨卫新旧、空调内机在哪个房间。它只描述看到了什么，排名由规则算。真语音版里，NVIDIA Parakeet 把租客说的话转成文字。
+- **NVIDIA Nemotron = 负责“读”的大脑。** Nemotron 3.5 Lightning 读懂租客说的话（拆成预算、几房、地点、入住时间、宠物等检查项）、读懂中介回复（落到哪一格、变成什么状态）、把核对结果说成自然的话。Nemotron 3.5 Super VL 看挂牌照片和户型图：有没有“电脑摆的家具”、厨卫新旧、空调内机在哪个房间；也看租客传的“喜欢的房间”照片，读出地板、配色、光线、年代，再和每套房的照片比风格。它只描述看到了什么，排名由规则算，风格分只做参考。真语音版里，NVIDIA Parakeet 把租客说的话转成文字。
 - **Meterless Nightshift = 这台电脑上的“交换机”。** 应用的语言类请求先发给 Nightshift，再由它按我们配的 lane 交给 Nemotron 3.5 Lightning：读需求、写台词、读中介回复都走它。
 
 ### English
 
 - **Zetaris is how HomeTruth asks questions.** The facts about one rental live in seven places: the listing page, facts read from its photos, the floor plan, agent replies and by-laws, rent medians, transit times and sun geometry. On every search HomeTruth sends Zetaris one SQL query per source, all seven at once. Every line of evidence on screen carries the ID of the Zetaris query that returned it, and hovering shows the SQL.
-- **NVIDIA Nemotron does the reading.** Nemotron 3.5 Lightning turns what the renter says into checks (budget, bedrooms, location, move-in, pets), maps each agent reply to the right check, and phrases the spoken walkthrough. Nemotron 3.5 Super VL reads listing photos and floor plans: "digitally furnished" stamps, the age of kitchens and bathrooms, which room the air-con unit is in. It describes what it sees; the ranking comes from rules, not from the model. In the voice version, NVIDIA Parakeet turns speech into text.
+- **NVIDIA Nemotron does the reading.** Nemotron 3.5 Lightning turns what the renter says into checks (budget, bedrooms, location, move-in, pets), maps each agent reply to the right check, and phrases the spoken walkthrough. Nemotron 3.5 Super VL reads listing photos and floor plans: "digitally furnished" stamps, the age of kitchens and bathrooms, which room the air-con unit is in. It also reads a photo of a room the renter likes (floor, colours, light, era) and compares it with each listing's photos for a style match. It describes what it sees; the ranking comes from rules, not from the model, and the style match is a soft preference. In the voice version, NVIDIA Parakeet turns speech into text.
 - **Meterless Nightshift is the switchboard on the laptop.** HomeTruth sends its language requests to Nightshift, which routes them to Nemotron 3.5 Lightning on the lane we configured: understanding the request, writing the spoken lines and reading agent replies all go through it.
 
 ### 不能说过头的地方
@@ -198,7 +200,7 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 | 156 套里 130 套没说空调在哪间、134 套没提宠物 | 10-27 20:01 从矩阵算：有完整详情页的 156 套真房源；C1 “not which rooms” 130、J1 unknown 134、J1 supported 0 |
 | 61 places pass the basics | take3 网页实际台词（数字随房源变化，录的时候是多少就是多少） |
 | Muller Lane 比邮编 2020 两房新租约中位数 1050 低 14% | NSW Fair Trading 押金登记（CC BY 4.0），data/public/nsw_bond_rents.csv |
-| 中介说 no pets → Conflict → 掉出前三，113 Sutherland Street 补进 | 10-27 19:50 本机接口实测（4c97403 之后的行为） |
+| 风格匹配：Nemotron 读地板、配色、光线、年代，每套房一个分数 + 相同 / 不同的地方，不进排名 | src/photo/style.py（match：按属性加权算百分比）；页面 static/qi/style-match.js（面板、`Style NN%` 角标）+ property-detail.js 的 Style match 行（Matches / Misses / Basis）；runs/style_facts.jsonl 里 480 套房的挂牌照片已预读；面板写着 “Soft preference — not used for ranking”；读图先问 Nightshift、被拒后直连 NVIDIA |
 | 七个来源，每个一条实时 Zetaris 查询，证据带查询编号 | 934e99c，infra/zetaris.md 10-27 节 |
 | Nightshift 把语言请求交给 Nemotron | runs/llm_log.jsonl：needs_parse、narrate、agent_reply 走 provider = meterless、model = nemotron-3.5-lightning，status ok |
 
@@ -210,7 +212,7 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 
 - [x] Day Avenue 照片和详情页；Muller Lane 的核对表（take3 有）
 - [ ] 特点 1 真语音：租客两句的音频（真人录或 AI），8631 上用假麦克风重录
-- [ ] 特点 5：按本稿改成 Muller Lane 重录中介回复这一段
+- [ ] 特点 5：一张“喜欢的房间”照片（团队自己拍或免版权图），然后在房源墙上录上传 → 出分 → 打开 Style match 那一行
 - [ ] 开场数字卡、五张特点标题卡、赞助商示意图：我来做
 - [ ] Nightshift 窗口截图（Lane = Nemotron 3.5 Lightning + 一条调用记录）：超亮截，或者允许我操作电脑截
 - [ ] 旁白：真人录，或先用 AI 声音
@@ -219,7 +221,7 @@ v4 = 短痛点开场 + 五个产品特点逐个现场演示 + 赞助商大白话
 
 ## 要你定的
 
-1. 五个特点选得对吗？要换掉哪个（比如用 “Interrupt any time” 换掉 “It reads the photos”）？
+1. 第 5 点那张“喜欢的房间”照片用哪张？（团队有自己拍的就用自己的，没有我找一张免版权的）
 2. 旁白用真人还是先用 AI 声音？
 3. 特点 1 的租客声音：真人录两句，还是 AI 声音？
-4. 要不要另做 3 分钟版（加打断、记忆、风格匹配）？
+4. 要不要另做 3 分钟版（加打断、记忆、中介回复后自动更新）？
