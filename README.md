@@ -1,121 +1,169 @@
-# HomeTruth · 看房核对员
+# HomeTruth: a rental checker you can talk to
 
-**一句话**：租客用一句话说需求，HomeTruth 把每套房按挂牌页、公开数据、中介回复逐项核对，边说边演示证据，核不出来的格子告诉你下一步问谁、看房时看什么。Open Agent Hackathon 2026 参赛项目（截止 2026-10-27 23:45 UTC）。
+Tell it what you need in plain English. HomeTruth checks every listing against everything it can find (the listing page, the photos, the floor plan, public data and the agent's replies), then tours the best homes out loud. For every claim it says how it knows, and when nothing backs a claim it gives you the question to ask the agent.
 
-- 网页版（打字 + 浏览器朗读）：https://hometruth.codeprism.tech
-- 真语音版（麦克风，Chrome）：https://hometruth-voice.codeprism.tech
-- 对外（评委）材料用英文；这份 README 是给队友的，中文。
+- **Open Agent Hackathon 2026**, Track 1: *Fragmented Intelligence* (it also fits *Explain Why*).
+- **Live demo:** https://hometruth.codeprism.tech. Type or talk; voice needs Chrome.
+- **Real-time voice version:** https://hometruth-voice.codeprism.tech. NVIDIA Parakeet does the speech recognition, and you can interrupt mid-sentence.
+- **Sponsor technology:** [docs/SPONSORS.md](docs/SPONSORS.md) explains how we use Zetaris, Meterless and NVIDIA. We did not use Cursor.
 
-## 1. 仓库结构
+## The problem
 
-| 目录 | 是什么 |
+Listing pages are written to sell the home. The facts that decide whether it works for you are scattered or missing:
+
+- Is the air conditioning in the bedroom or only the living room?
+- Which way do the windows face?
+- Are pets allowed in writing?
+- How long is the walk to the light rail?
+
+Renters piece these together from photos, floor plans, maps and back-and-forth with agents. Many only find the deal-breaker at the inspection.
+
+## What it does
+
+1. **You say what you need.** For example: *"Two bedrooms near UNSW, under $900 a week, I have a cat."* If one of the five essentials is missing, it asks for it. The essentials are budget, bedrooms, where you need to get to, move-in date and pets. It asks for at most two at a time and asks at most twice. Anything else it assumes and tells you what it assumed.
+2. **It searches every source at once.** Seven federated SQL queries go through **Zetaris**, one per source. The source panel lights up row by row, with row counts and timings.
+3. **It tours the best homes out loud in short sentences.** For each home it says why it fits, what's special and how it knows. The card, the matrix cell and the evidence row it is talking about light up as it speaks.
+4. **Every check has one of four honest states:**
+   - **Supported:** a source says so.
+   - **Inferred:** likely, but nothing states it.
+   - **Conflict:** it goes against what you need.
+   - **Unknown:** no source covers it. When a hard requirement is unknown, it shows as **To confirm** and never counts as a match.
+5. **Unknowns become questions.** Each home gets the three questions most worth asking its agent. You also get what to look for at the inspection.
+6. **Agent replies update everything.** Paste an agent's reply, or let one arrive in the inbox. The affected cells change state, the ranking updates, and a versioned change log records who changed what and when.
+7. **You can interrupt at any time.** For example: *"skip this one"*, *"what about parking?"*, *"oh, and it needs to be furnished"*. It re-plans from where you are and doesn't repeat what you've already heard.
+8. **It remembers you.** Next visit it says *"Welcome back"*, then tells you what changed while you were away and what is still open. **Forget me** deletes all of it.
+
+There's more on the detail page:
+- Sun and aspect: the sun path for the address and the window direction.
+- Median rents by postcode from NSW bond lodgements.
+- Facts read from the photos and the floor plan, each labelled with the model that read them.
+- An approximate 3D plan built from the floor plan.
+- **Looks like this:** upload rooms you like and see a style match. It's a soft preference and never affects the ranking.
+
+## How it works
+
+```
+ Browser (Notion-style page, voice orb, cards, evidence matrix)
+   ▲  event stream: state · needs · source · card · highlight · evidence · say · ask · beat · questions · done
+   │  (the page only draws events; the model never draws UI)
+   ▼
+ src/voice/server.py (:8630, web + browser voice)    src/voice/pipecat_app.py (:8631, Pipecat + WebRTC, Riva ASR/TTS)
+   ├─ policy.py        dialogue policy: ask the essentials, classify interruptions, plan and re-plan the tour, rank
+   ├─ phraser.py       short sentences built only from the evidence matrix (narrator.py: optional Nemotron rewrite, checked)
+   ├─ zetaris_live.py  7 parallel Zetaris queries per search → every evidence row carries its query id
+   ├─ beliefs.py       versioned beliefs per cell (World Model style): agent reply → new version + reason + rank change
+   ├─ memory.py        cross-visit renter memory (H-MEM style): needs, shortlist, what changed while away
+   └─ inbox.py         agent replies waiting for a renter (email/SMS stand-in: scripts/agent_reply.py)
+ src/llm/provider.py   the only way out to a model: Meterless Runtime (Nightshift) first → NVIDIA direct → none; logs the route
+ src/photo/            Nemotron VL reads listing photos, floor plans, style references; 3D plan from the floor plan
+ src/sun/solar.py      sun position for the address and date; src/evidence/bond_rents.py  NSW bond median rents
+```
+
+The rules behind the four states are written down per evidence type in [docs/01](docs/01_判断规则与证据分级.md). For example, a listing photo can show that a dishwasher is present, but it can't show that the dishwasher works. The dimensions we check (rent, rooms, commute, pets, sun and so on, 75 in total) are listed in [docs/02](docs/02_维度清单.md). The design docs are in Chinese, the team's working language. This README and [docs/SPONSORS.md](docs/SPONSORS.md) are the English entry points.
+
+### Measured
+
+| What | Result |
 |---|---|
-| `src/voice/` | 导览原型：`server.py`（8630 网页版）、`pipecat_app.py`（8631 真语音）、`policy.py`（对话策略和核对逻辑）、`narrator.py`（台词）、`static/`（前端） |
-| `src/photo/` `src/sun/` `src/llm/` … | 看图读事实、日照几何、模型路由（Meterless Nightshift 优先，直连 NVIDIA 兜底） |
-| `src/voice/mock_matrix.json` | 证据矩阵：5 套合成房源 + 9 套 Domain 真房源（只有事实，没有照片） |
-| `scripts/` | 抓样本、读照片、建 3D plan、截图、回归等工具，见 `scripts/README.md` |
-| `tests/` | 单测（153 个）和语音流程回归 |
-| `docs/` | 方案 00、规则 01、维度 02、数据 schema 03、生成 prompt 04 … 10；`docs/hackathon/` 是赛事规则 |
-| `infra/windows/` | 校园网 Windows 盒子的部署脚本（只有超亮操作） |
-| `runs/` | 运行产物。仓库里只保留演示要用的事实文件和回归基线，其余本机生成 |
-| `CLAUDE.md` → `STATE.md` / `DECISIONS.md` / `TODO.md` | 项目索引、当前状态、已定的决定、任务板。开工先看这三个 |
+| Zetaris queries per search | 7 in parallel, each 1.4–2.5 s on the hosted server. All 7 sources are lit about 3 s after the voice starts. In the measured run, 21 of 21 evidence rows came via Zetaris. |
+| From your request to the end of a three-home tour | 52–61 s locally and 59–60 s on the hosted demo. Before this upgrade it took 213–269 s. |
+| Until the first home is spoken about | 4.3 s on the hosted demo and 4.8 s locally |
+| Longest sentence in a tour | 7.8 s |
+| Interruptions handled as meant | 15 of 15, in a simulation of 21 scripted renters, most of whom interrupt mid-tour (`scripts/voice_customer_sim.py`) |
+| Old content repeated after you add a need mid-tour | none |
+| Unit tests | 270, all offline: Zetaris, Meterless and NVIDIA are faked |
 
-## 2. 本机跑起来
+## Run it
 
-需要 macOS 或 Linux，Python 3.12（8630 网页版只用标准库，3.9 也能跑；8631 真语音和部分工具要 3.12 的虚拟环境）。
+You need macOS or Linux and Python 3.12. The web version runs on the standard library alone and works with Python 3.9 or later. Voice input needs Chrome.
 
 ```bash
-git clone <仓库地址> hometruth && cd hometruth
-```
-
-```bash
-python3.12 -m venv .venv && .venv/bin/pip install -r requirements-voice.txt
-```
-
-（有 uv 的话更快：`uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements-voice.txt`。缺 `pillow` / `numpy` 时补装一下。）
-
-```bash
-cp .env.example .env
-```
-
-然后按下一节填 `.env`。
-
-## 3. `.env` 怎么配
-
-`.env` 已被 gitignore，**密钥只放这里，不发群、不贴聊天**。`.env.example` 每一项上面都有注释，这里只说最常用的：
-
-| 要干什么 | 填哪几项 | 不填会怎样 |
-|---|---|---|
-| 只想把页面跑起来看流程 | 什么都不填，`TTS_BACKEND=say`（Mac 自带声音，不花钱） | 台词全用模板，需求解析只用规则，照样能走完整个流程 |
-| 模型写台词、解析需求、读照片（Nemotron） | `NVIDIA_API_KEY`（build.nvidia.com 右上角生成，`nvapi-` 开头） | 退回模板和规则 |
-| 模型调用经 Meterless 记录（赛事要求） | 本机开着 Nightshift，填 `METERLESS_BASE_URL` + `METERLESS_RUNTIME_TOKEN`（或整条 `METERLESS_CONNECT_LINK`，或 `METERLESS_TOKEN_FILE`） | 自动直连 NVIDIA，并在日志里如实记"没经 Nightshift" |
-| Zetaris 取证（10-27 起每次开查真查） | `ZETARIS_*` 五项，向超亮要团队的实例地址和 key；表已注册（scripts/zetaris/10，REST 表指向公网 /api/zetaris/<来源>）；`HOMETRUTH_ZETARIS=0` 可关 | 来源查询模拟、页面标 simulated，证据标 local copy |
-| 网页版用 ElevenLabs 女声 | `TTS_BACKEND=elevenlabs`、`ELEVENLABS_API_KEY`、`ELEVENLABS_VOICE=Sarah` | 用 `say`；ElevenLabs 免费档每月 1 万字符，演示前别乱烧 |
-| 真语音版 8631 | `NVIDIA_API_KEY`（识别 Parakeet + 合成 Magpie 共用）；要换 ElevenLabs 合成就 `TTS_PROVIDER=elevenlabs` | `--fake-speech` 模式：打字代替说话、`say` 合成，WebRTC 和打断是真的 |
-
-其他开关（`NARRATION_LLM`、`NEEDS_LLM_TIMEOUT`、`SMART_TURN` 等）保持 `.env.example` 里的默认值就行。
-
-## 4. 启动
-
-网页版（打字框任何浏览器都行，语音要 Chrome）：
-
-```bash
+git clone <this repo> hometruth && cd hometruth
 python3 src/voice/server.py
 ```
 
-打开 http://127.0.0.1:8630 （首页是 Notion 风格页 `static/notion/`，带旧版的「Looks like this」风格匹配和右下角对话浮窗；上一版 qi 壳在 `/qi`，最早的页在 `/classic`，三个页共用 `static/app.js` 和同一套事件），在输入框写一句需求，例如 `Two bedrooms near Central, under 900 a week, I have a cat`，或点 **Start talking** 用麦克风。
+Open http://127.0.0.1:8630 and type *"Two bedrooms near UNSW under 900 a week, I have a cat"*, or press **Start talking**.
 
-真语音版：
+**With no keys at all** the whole flow still runs:
+- Needs are parsed by rules.
+- Sentences come from templates.
+- Source queries are simulated, and the page labels them *simulated*.
+- The voice is macOS `say` or the browser's built-in voice.
 
-```bash
-.venv/bin/python src/voice/pipecat_app.py
-```
-
-打开 http://127.0.0.1:8631 。没 key 先 `--dry-run` 看缺什么，或 `--fake-speech` 不用 key 演示。
-
-## 5. 数据和缓存
-
-- 真房源的挂牌照片属于中介公司。公网要用的 `data/real/photos/<id>/prep/*.jpg`（64 张，7.7 MB）**在仓库里**（私有仓库，10-27 起；页面上带 “Real listing” 标和来源），Domain 原图 webp 不进，要重做 prep 用 `scripts/domain_sample.py fetch`。仓库公开之前要先处理这些照片（见 TODO）。
-- 模型读出来的事实（照片、户型图、3D plan 分房、风格匹配）已经随仓库带着：`runs/photo_facts.jsonl`、`runs/floorplan_facts.jsonl`、`runs/plan3d_facts.jsonl`、`runs/style_facts.jsonl`。要重算用 `src/photo/facts.py`、`src/photo/plan3d.py`、`src/photo/style.py warm`，会调 NVIDIA 看图接口。
-- `runs/` 里其他东西（模型调用记录、语音缓存、录音、截图、会话记忆）都是本机生成的，不进仓库。
-
-## 6. 测试
-
-单测：
+To turn on the real services:
 
 ```bash
-PYTHONUTF8=1 .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements-voice.txt
+cp .env.example .env    # then fill in what you have; every entry is commented
 ```
 
-语音流程回归（8630 跑着时，逐事件比对基线，最后应打印 `REGRESSION PASS`）：
+| To get | Set in `.env` | Without it |
+|---|---|---|
+| Nemotron needs parsing, photo and floor plan reading, reply reading | `NVIDIA_API_KEY` (from build.nvidia.com) | rules and templates |
+| Model calls routed through Meterless | Nightshift running locally, plus `METERLESS_BASE_URL` and `METERLESS_RUNTIME_TOKEN` (or `METERLESS_CONNECT_LINK`) | calls go to NVIDIA directly, and each call's log records the route it took |
+| Evidence through Zetaris | `ZETARIS_*`, after registering the tables with `scripts/zetaris/10_register_hometruth.sql` (see [docs/SPONSORS.md](docs/SPONSORS.md)) | queries are simulated and evidence is marked *local copy* |
+| A natural voice on the web version | `TTS_BACKEND=elevenlabs`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE` | `say` or the browser voice |
+| Real-time voice (:8631) | `NVIDIA_API_KEY` (shared by Parakeet ASR and Magpie TTS) | `--fake-speech`: you type instead of talking, but WebRTC and interruption are still real |
+
+The real-time voice version runs with `.venv/bin/python src/voice/pipecat_app.py` and is served at http://127.0.0.1:8631. Add `--dry-run` to see which keys are missing.
+
+## Test it
 
 ```bash
-python3 tests/voice_regression.py --base http://127.0.0.1:8630 --out runs/voice_regression/local.jsonl --compare runs/voice_regression/baseline_8630_materials.jsonl
+python3 -m unittest discover -s tests -p 'test_*.py'          # unit tests, offline
+python3 tests/voice_regression.py --base http://127.0.0.1:8630 \
+  --out runs/voice_regression/local.jsonl --compare runs/voice_regression/baseline_8630_materials.jsonl
+.venv/bin/python scripts/voice_customer_sim.py http://127.0.0.1:8630 runs/voice_sim/local.json   # simulated renters
 ```
 
-页面会不会卡（无头 Chromium 走一遍"反问 → 打断回答 → 过渡句 → 再反问"，需要装了 playwright 的 python3）：
+## Data
 
-```bash
-python3 scripts/ui_flow_check.py http://127.0.0.1:8630 runs/screenshots/flow
-```
+- **5 synthetic listings** come with a full set of materials: listing text, photos, a floor plan and strata by-laws. They were generated truth-first: we wrote the ground truth, rendered the materials from it, and computed in code which questions each material can answer. They use real suburbs and postcodes but no real full addresses ([docs/03](docs/03_数据schema.md), [docs/04](docs/04_数据生成prompt.md)).
+- **483 real Sydney listings** come from search-result pages the team saved by hand from Domain and realestate.com.au. We kept facts only: rent, bedrooms, bathrooms, parking, location and the features list. Nothing was scraped, and these listings have far less evidence, which is why most of their checks are *Unknown* and turn into questions.
+- **Public data:**
+  - NSW Fair Trading rental bond lodgements, as median rent by postcode, bedrooms and dwelling type (CC BY 4.0; `data/public/`).
+  - The sun position, computed from coordinates.
+  - Commute times, which are estimates and are marked as such.
+- **Not in this repository:**
+  - Listing photos, which belong to the agencies. The hosted demo shows them with their source.
+  - The illustrative interior photos and the voice-orb renderer used on the hosted demo. The repository ships a simple orb with the same interface.
+  - Server deployment scripts.
+  - The app runs without any of these, and missing photos show as plain placeholders.
 
-改了对话策略、台词或前端，三样都跑一遍再提 PR。
+## Repository map
 
-## 7. 规矩
+| Path | What |
+|---|---|
+| `src/voice/` | the app: servers, dialogue policy, phrasing, Zetaris client, beliefs, memory, inbox, front end in `static/` |
+| `src/voice/mock_matrix.json` | the evidence matrix: 488 listings × checked dimensions, each cell with its evidence rows |
+| `src/llm/provider.py` | model routing (Meterless Runtime → NVIDIA → none) per Meterless's provider contract v4 |
+| `src/photo/`, `src/sun/`, `src/evidence/` | photo, floor plan and style reading; the 3D plan; sun geometry; bond rents |
+| `scripts/zetaris/` | SQL to register, query and drop the Zetaris tables and views |
+| `scripts/` | data import, photo reading, screenshots, regression, the customer simulator, demo-video recording |
+| `tests/` | unit tests and the voice regression baselines |
+| `docs/` | product plan (00), judgement rules (01), dimensions (02), data schema (03), data generation (04), and so on, in Chinese |
 
-- 分支 `feat/<模块>-<短名>`，`main` 只接 PR；提交信息 `<模块>: 做了什么`。
-- 不进仓库：`.env`、真房源的原始抓取（data/real/domain）和原图 webp、会议转写、密钥、服务器口令。`.gitignore` 已经写好，别改松。
-- 两条不变量：**旁白只从证据矩阵生成**（模型只负责把事实说顺，不能加事实）；**所有模型调用经 Meterless Nightshift 记录**，转发不通就直连并如实记录。
-- 参考别家设计（REA、Domain、Notion…）只借交互和排版，我们没有的功能和数据不加。
-- 第三方素材都带出处：Lucian UX/UI Prompt 动效（MIT，`src/voice/static/qi/vendor/lucian/`）、three.js（MIT）、ElevenLabs 的球（营销页渲染器，许可未明，公开仓库前换成 MIT 版的 @elevenlabs/ui 同接口球，见 TODO）。
-- 会话结束更新 `STATE.md`；定了的事写 `DECISIONS.md`；活儿写 `TODO.md`。
+## What we built and what we reused
 
-## 8. 部署
+- Our code was written during the hackathon window, which opened on 22 Oct 2026. The repository's first commit is from 27 Oct.
+- **Open-source components used:**
+  - three.js (MIT), for the 3D plan.
+  - Lucian UX/UI Prompt effects (MIT), in `src/voice/static/qi/vendor/lucian/`.
+  - Pipecat (BSD-2-Clause) and the NVIDIA Riva client, for real-time voice.
+  - Google Fonts: Inter, Newsreader and IBM Plex Mono.
+- **Services:** Zetaris Cloud, Meterless Nightshift, NVIDIA build.nvidia.com (Nemotron, Parakeet, Magpie) and the ElevenLabs text-to-speech API.
+- Memory and beliefs follow Meterless's H-MEM and World Model patterns. We implemented them ourselves in Python and didn't use the TypeScript reference package.
 
-公网那两个地址跑在校园网的 Windows 盒子上。**合并到 main 就自动上线**：盒子每 2 分钟拉一次 main，跑完全部单测（约 3 分钟）通过才切换并重启，测试不过就不换、上一版继续跑。所以：
+## Limitations
 
-- 开发走分支 + PR，合并到 main 之前本地 `python3 -m unittest discover -s tests -p 'test_*.py'` 要全过；
-- 合并后 5 分钟内看一眼 `curl -A HomeTruth-client/1 https://hometruth.codeprism.tech/api/hello`，`deployed.sha` 应该变成你的合并提交；没变就是测试没过或切换失败，问超亮看盒子上的 `deploy.log`；
-- 盒子上的 `.env`、运行记录不会被部署覆盖；照片随仓库部署；手工改盒子上的文件没用，下一次部署会冲掉。
+- **Meterless on the hosted demo:** Nightshift is a desktop app on our laptop, so the hosted demo's model calls go to NVIDIA directly. Each call logs the route it took. Run locally with Nightshift open, the same code routes through Meterless.
+- **Real listings have thin evidence:** they carry only what a search-result card shows, plus what the photos reveal.
+- **Approximate features:** commute times, the 3D plan and the style match are approximate, and the app labels them that way.
+- **Agent reply channel:** agent replies arrive through a paste box or an inbox file. A real email or SMS webhook is not built yet.
+- **No comparison experiment yet:** we planned to compare the same model reading only the listing against multi-source checking. That experiment isn't finished.
 
-脚本和细节见 `infra/windows/README.md`，盒子只有超亮能登录；本地开发不需要碰。
+## Next
+
+- Hook up the email and SMS reply channel, so questions go to the agent and the answers come back on their own.
+- Run the listing-only vs multi-source comparison and publish the numbers.
+- Let renters add their own inspection photos as a new evidence source.
