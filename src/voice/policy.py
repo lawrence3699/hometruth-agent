@@ -21,6 +21,7 @@ import memory
 import narrator
 import phraser
 import replies
+import zetaris_live  # 10-27：取证经 Zetaris（每次开查一条 SELECT / 来源；没 key 时不联网）
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -631,7 +632,8 @@ def _mock_id() -> str:
 
 
 def _ev(items: List[dict]) -> List[dict]:
-    return [dict(it, stage=stage_of(it), mock=True, request_id=_mock_id()) for it in items]
+    # 每条证据标上从哪来（zetaris_live.stamp）：返回它的那条 Zetaris 查询（request_id + SQL）、中介回复，或本地副本；不再有 mock
+    return [dict(it, stage=stage_of(it), **zetaris_live.stamp(it)) for it in items]
 
 
 def _cell(dim: str, status: str, value: Any = None, why: str = "", evidence: Optional[List[dict]] = None, fail: bool = False, **extra) -> dict:
@@ -679,6 +681,19 @@ def _target_date(move_in: dict) -> Optional[dt.date]:
     return dt.date(year, move_in["month"], min(move_in["day"], 28))
 
 
+def commute_evidence(L: dict, anchor: str) -> Tuple[Optional[dict], dict]:
+    """G1 的通勤行和它的那条证据。evaluate 用它，zetaris_rows 发给 Zetaris 的也是它，所以两边的 evidence_id 对得上。"""
+    key = ANCHOR_KEY.get(anchor)
+    row = L["commute"].get(key) if key else None
+    if row is None:
+        return None, {"table": "public_transit", "row": f"{L['suburb']}→{anchor}", "material_id": None, "text": "No row yet"}
+    if row.get("estimate"):  # 真房源（scripts/domain_sample.py）：按直线距离估的，不是时刻表
+        return row, {"table": "geo_estimate", "row": f"{L['id']}→{anchor}", "material_id": None,
+                     "text": f"About {row['min']} min by {row['mode']}: {row.get('km', '?')} km in a straight line, an estimate from the distance, not a timetable"}
+    return row, {"table": "public_transit", "row": f"{L['suburb']}→{anchor} 08:00", "material_id": None,
+                 "text": f"{row['min']} min by {row['mode']}, weekday 8:00 departure"}
+
+
 def evaluate(L: dict, profile: dict, overrides: Dict[str, dict]) -> Dict[str, dict]:
     cells: Dict[str, dict] = {}
     facts = L["facts"]
@@ -690,21 +705,15 @@ def evaluate(L: dict, profile: dict, overrides: Dict[str, dict]) -> Dict[str, di
         ok = L["bedrooms"] >= profile["bedrooms"]
         cells["B1"] = _cell("B1", "supported" if ok else "conflict", f"{L['bedrooms']} bed", evidence=facts["B1"]["evidence"], fail=not ok)
     if profile["anchor"]:
-        key = ANCHOR_KEY.get(profile["anchor"])
-        row = L["commute"].get(key) if key else None
+        row, ev = commute_evidence(L, profile["anchor"])
         if row is None:
-            cells["G1"] = _cell("G1", "unknown", None, why=f"No transit row for {profile['anchor']} in the prototype table.",
-                                evidence=[{"table": "public_transit", "row": f"{L['suburb']}→{profile['anchor']}", "material_id": None, "text": "No row yet"}])
-        elif row.get("estimate"):  # 真房源（scripts/domain_sample.py）：按直线距离估的，不是时刻表 → 最多"推断"，超限仍是冲突
+            cells["G1"] = _cell("G1", "unknown", None, why=f"No transit row for {profile['anchor']} in the prototype table.", evidence=[ev])
+        elif row.get("estimate"):  # 真房源：距离估算 → 最多"推断"，超限仍是冲突
             ok = row["min"] <= profile.get("max_commute", 40)
-            cells["G1"] = _cell("G1", "inferred" if ok else "conflict", row, estimate=True,
-                                evidence=[{"table": "geo_estimate", "row": f"{L['id']}→{profile['anchor']}", "material_id": None,
-                                           "text": f"About {row['min']} min by {row['mode']}: {row.get('km', '?')} km in a straight line, an estimate from the distance, not a timetable"}])
+            cells["G1"] = _cell("G1", "inferred" if ok else "conflict", row, estimate=True, evidence=[ev])
         else:
             ok = row["min"] <= profile.get("max_commute", 40)
-            cells["G1"] = _cell("G1", "supported" if ok else "conflict", row,
-                                evidence=[{"table": "public_transit", "row": f"{L['suburb']}→{profile['anchor']} 08:00", "material_id": None,
-                                           "text": f"{row['min']} min by {row['mode']}, weekday 8:00 departure"}])
+            cells["G1"] = _cell("G1", "supported" if ok else "conflict", row, evidence=[ev])
     if profile["move_in"]:
         avail = dt.date.fromisoformat(L["available_from"])
         target = _target_date(profile["move_in"])
@@ -753,6 +762,38 @@ def rank(profile: dict, overrides: Dict[str, Dict[str, dict]]) -> Tuple[List[dic
         ranked.append({"listing": L, "cells": cells, "score": score, "counts": counts})
     ranked.sort(key=lambda r: (-r["score"], r["listing"]["rent"]))
     return ranked, excluded
+
+
+_ZROWS: Dict[str, List[dict]] = {}
+
+
+def zetaris_rows(source: str) -> Optional[List[dict]]:
+    """/api/zetaris/<source> 发布的表（Zetaris 把它注册成 REST 表，scripts/zetaris/10_register_hometruth.sql）：这个来源的每条证据一行，
+    列见 zetaris_live.COLUMNS，全是字符串。证据就是 evaluate 用的那几条（矩阵 facts 的证据 + commute_evidence 算的通勤行，三个有表的地点），
+    evidence_id 两边一样。同一条证据挂在几套房上就有几行（按 listing_id 过滤要用）。不认识的来源返回 None。"""
+    if source not in {s["name"] for s in SOURCES}:
+        return None
+    if source in _ZROWS:
+        return _ZROWS[source]
+    tables, out, seen = zetaris_live.tables_of(source), [], set()
+
+    def add(L: dict, dim: str, e: dict) -> None:
+        eid = zetaris_live.evidence_id(e)
+        if e.get("table") in tables and (eid, L["id"]) not in seen:
+            seen.add((eid, L["id"]))
+            out.append({"evidence_id": eid, "listing_id": L["id"], "dim": dim, "source_table": str(e.get("table")), "row_ref": str(e.get("row") or ""),
+                        "material_id": str(e.get("material_id") or ""), "fact": str(e.get("text") or "")})
+    anchors = sorted({label for _, label, key in PLACES if key})
+    for L in LISTINGS:
+        for dim, f in (L.get("facts") or {}).items():
+            for e in f.get("evidence", []):
+                add(L, dim, e)
+        for a in anchors:
+            row, e = commute_evidence(L, a)
+            if row is not None:
+                add(L, "G1", e)
+    _ZROWS[source] = out
+    return out
 
 
 def listing_summary(L: dict) -> dict:
@@ -1198,21 +1239,53 @@ class Session:
             legal_pending = any(it["cells"]["H1"]["status"] == "unknown" for it in shown)
             nar = narrator.start_tour(shown, self.profile, self.heard, TOUR_ORDER, best_question,
                                       phraser.wrap(len(shown), self.excluded, legal_pending), legal_pending, self.excluded, viewing_check=viewing_check)
-        for i, src in enumerate(SOURCES):
-            rid = _mock_id()
-            stage = stage_of({"table": src["table"]})  # 来源面板按五段分组（listing / public / agent；viewing、signing 两段永远是空的）
-            yield {"type": "source", "name": src["name"], "label": src["label"], "table": src["table"], "stage": stage, "status": "running", "request_id": rid}
-            time.sleep(random.uniform(0.15, 0.35) if self.quick else random.uniform(0.4, 1.0))
-            yield {"type": "source", "name": src["name"], "label": src["label"], "table": src["table"], "stage": stage, "status": "done", "request_id": rid,
-                   "rows": src["rows"], "ms": random.randint(180, 2400), "mock": True}
-            if i == 1:
-                yield self._say(phraser.found(n_pass, min(TOP_N, n_pass), variety=True) if self._nar() else phraser.shortlist(n_pass, min(TOP_N, n_pass)),
-                                step="shortlist")
+        if zetaris_live.ENABLED:
+            yield from self._sources_zetaris(n_pass)
+        else:  # 没接 Zetaris（单测、没 key 的机器）：模拟查询，事件带 mock，页面照实标
+            for i, src in enumerate(SOURCES):
+                rid = _mock_id()
+                stage = stage_of({"table": src["table"]})  # 来源面板按五段分组（listing / public / agent；viewing、signing 两段永远是空的）
+                yield {"type": "source", "name": src["name"], "label": src["label"], "table": src["table"], "stage": stage, "status": "running", "request_id": rid}
+                time.sleep(random.uniform(0.15, 0.35) if self.quick else random.uniform(0.4, 1.0))
+                yield {"type": "source", "name": src["name"], "label": src["label"], "table": src["table"], "stage": stage, "status": "done", "request_id": rid,
+                       "rows": src["rows"], "ms": random.randint(180, 2400), "mock": True}
+                if i == 1:
+                    yield self._shortlist_line(n_pass)
         self.quick = True
         self.plan = build_tour(self.ranked, self.profile, self.excluded, narration=nar)
         self.pos = 0
         yield {"type": "state", "phase": "touring", "label": "Walking you through"}
         yield from self._emit_plan()
+
+    def _shortlist_line(self, n_pass: int) -> dict:
+        return self._say(phraser.found(n_pass, min(TOP_N, n_pass), variety=True) if self._nar() else phraser.shortlist(n_pass, min(TOP_N, n_pass)),
+                         step="shortlist")
+
+    def _sources_zetaris(self, n_pass: int) -> Iterator[dict]:
+        """真查：每个来源一条 SELECT 经 Zetaris（zetaris_live），只查这次的候选房，一起发出去，哪条先答哪行先亮。答完把排名里每条证据
+        重新标上返回它的那条查询。超时的来源用它上一次成功的查询（页面标 earlier query），从没查成过的标 failed，证据留 local。"""
+        ids = [r["listing"]["id"] for r in self.ranked] or [L["id"] for L in LISTINGS]
+        by_name = {s["name"]: s for s in SOURCES}
+        base = {n: {"type": "source", "name": n, "label": s["label"], "table": s["table"], "stage": stage_of({"table": s["table"]}), "via": "zetaris"}
+                for n, s in by_name.items()}
+        for n in by_name:
+            yield dict(base[n], status="running", sql=zetaris_live.source_sql(n, ids))
+        for i, r in enumerate(zetaris_live.run_sources(list(by_name), ids)):
+            ev = dict(base[r["source"]], sql=r.get("sql"), mock=False)
+            if r.get("ok"):
+                ev.update(status="done", request_id=r["request_id"], rows=r["rows"], ms=r["ms"], queried_at=r["ts"])
+            elif r.get("earlier"):
+                e = r["earlier"]
+                ev.update(status="done", cached=True, request_id=e["request_id"], rows=e["rows"], ms=e["ms"], sql=e["sql"], queried_at=e["ts"])
+            else:
+                ev.update(status="failed", error=str(r.get("error") or "")[:160])
+            yield ev
+            if i == 1:
+                yield self._shortlist_line(n_pass)
+        for item in self.ranked:
+            for c in item["cells"].values():
+                for e in c.get("evidence", []):
+                    e.update(zetaris_live.stamp(e))
 
     def _emit_plan(self) -> Iterator[dict]:
         while self.pos < len(self.plan):

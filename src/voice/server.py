@@ -41,6 +41,8 @@ from policy import LISTINGS, SESSIONS, card_payload, forget_renter, hello_view, 
 import inbox  # noqa: E402
 import memory  # noqa: E402
 import narrator  # noqa: E402
+import zetaris_live  # noqa: E402
+from policy import SOURCES, zetaris_rows  # noqa: E402
 from photo import style as style_match  # noqa: E402  装修风格匹配（软偏好；policy 已把 src 放进 sys.path）
 
 LOG = ROOT / "runs" / "voice_log.jsonl"
@@ -121,11 +123,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"tts_backend": tts.backend(), "voice": tts.voice_label(), "voice_id": tts.voice_name(), "server_time": time.time(),
                                     "narration": "llm" if narrator.enabled() else "template",
                                     "deployed": deployed_info(),  # which commit is live (the box's auto-deploy writes deploy_info.json; null on a dev machine)
+                                    "zetaris": zetaris_live.status(),  # live queries on? how many evidence ids came back through Zetaris
                                     "memory": hello_view((q.get("renter") or [""])[0])})
         if u.path == "/api/style":  # ?renter=<id>：这位租客存的风格匹配（src/photo/style.py），没有就 profile null
             return self._json(*style_match.api_get(urllib.parse.parse_qs(u.query)))
         if u.path == "/api/listings":
             return self._json(200, {"listings": listings_view()})
+        if u.path.startswith("/api/zetaris/"):  # 证据表，Zetaris 把它注册成 REST 表来查（policy.zetaris_rows；scripts/zetaris/10_register_hometruth.sql）
+            name = u.path[len("/api/zetaris/"):]
+            rows = zetaris_rows(name)
+            if rows is None:
+                return self._json(404, {"error": f"unknown source {name!r}", "sources": [s["name"] for s in SOURCES]})
+            return self._json(200, {"source": name, "count": len(rows), "items": rows})
         if u.path == "/api/tts":
             q = urllib.parse.parse_qs(u.query)
             text = (q.get("text") or [""])[0].strip()
@@ -235,7 +244,10 @@ def main() -> None:
     ThreadingHTTPServer.request_queue_size = 128  # listen backlog: Windows refuses connections beyond it (default 5), and a page load fires dozens at once through cloudflared → intermittent 502 on static files (10-27)
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     srv.daemon_threads = True
-    print(f"HomeTruth voice prototype on http://127.0.0.1:{port}  (tts={tts.backend()}, voice={tts.voice_label()})", flush=True)
+    zet = zetaris_live.enable()  # Zetaris keys in .env → every search queries the evidence through Zetaris (HOMETRUTH_ZETARIS=0 turns it off)
+    if zet:
+        zetaris_live.warm([s["name"] for s in SOURCES], [L["id"] for L in LISTINGS])
+    print(f"HomeTruth voice prototype on http://127.0.0.1:{port}  (tts={tts.backend()}, voice={tts.voice_label()}, zetaris={'live' if zet else 'off'})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

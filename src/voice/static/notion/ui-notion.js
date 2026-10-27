@@ -20,6 +20,9 @@ window.HTUI = (() => {
   const cssEsc = (s) => (window.CSS && CSS.escape ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, '\\$&'));
   const fmtDate = (iso) => { if (!iso) return ''; const d = new Date(iso + 'T00:00:00'); return isNaN(d) ? String(iso) : d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }); };
   const fmtMs = (ms) => (ms == null ? '' : ms >= 1000 ? (ms / 1000).toFixed(1) + ' s' : Math.round(ms) + ' ms');
+  // where an evidence item came from (src/voice/zetaris_live.py): the Zetaris query that returned it, an agent reply, or the local copy
+  const prov = (e) => (e.via === 'zetaris' ? ` · Zetaris query ${String(e.request_id || '').slice(0, 8)}` : e.via === 'agent_reply' ? ' · agent reply' : e.via === 'local' ? ' · local copy' : e.request_id ? ' · ' + e.request_id : '') + (e.mock ? ' · simulated' : '');
+  const provTitle = (e) => (e.via === 'zetaris' ? `Zetaris query ${e.request_id}${e.queried_at ? ' at ' + e.queried_at : ''}\n${e.sql || ''}` : '');
   const fmtWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? String(iso || '') : d.toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
   const sentence = (s) => { s = String(s || ''); return s ? s[0].toUpperCase() + s.slice(1) : s; };
   const money = (n) => '$' + Number(n).toLocaleString('en-AU');
@@ -357,15 +360,17 @@ window.HTUI = (() => {
     function renderSources() {
       const list = [...sources.values()];
       if (!list.length) { el.sources.innerHTML = '<li class="stg">Checked once you’ve said what you need</li>'; el.sourcesCount.textContent = ''; fx.queueBar(el.qbar, 0, 0); return; }
-      const done = list.filter((s) => s.status === 'done').length;
-      el.sourcesCount.textContent = `${done}/${list.length}`;
+      const done = list.filter((s) => s.status === 'done' || s.status === 'failed').length;
+      el.sourcesCount.textContent = `${done}/${list.length}${list.some((s) => s.via === 'zetaris') ? ' · via Zetaris' : ''}`;
       fx.queueBar(el.qbar, done, list.length);
       const out = [];
       STAGES.forEach(([st, name]) => {
         const here = list.filter((s) => s.stageKey === st);
         if (!here.length && !STAGE_EMPTY[st]) return;
         out.push(`<li class="stg">${esc(name)}${!here.length ? `<small>${esc(STAGE_EMPTY[st])}</small>` : ''}</li>`);
-        here.forEach((s) => out.push(`<li class="src ${s.status === 'done' ? 'done' : 'running'}" data-name="${esc(s.name)}" title="${esc((s.table || '') + ' · ' + (s.request_id || '') + (s.mock ? ' · mock' : ''))}"><span class="ck">${TICK}</span><span class="nm">${esc((s.label || s.name).replace(/-/g, '‑'))}</span><span class="n">${s.status === 'done' ? `${Number(s.rows || 0).toLocaleString('en-AU')} rows · ${fmtMs(s.ms)}` : 'checking…'}</span></li>`));
+        here.forEach((s) => { const st = s.status === 'done' || s.status === 'failed' ? s.status : 'running';
+          const tip = s.via === 'zetaris' ? `Zetaris${s.request_id ? ' query ' + s.request_id : ''}${s.cached ? ' (earlier query)' : ''}\n${s.sql || ''}${s.error ? '\n' + s.error : ''}` : (s.table || '') + ' · ' + (s.request_id || '') + (s.mock ? ' · simulated' : '');
+          out.push(`<li class="src ${st}" data-name="${esc(s.name)}" title="${esc(tip)}"><span class="ck">${TICK}</span><span class="nm">${esc((s.label || s.name).replace(/-/g, '‑'))}</span><span class="n">${st === 'done' ? `${Number(s.rows || 0).toLocaleString('en-AU')} rows · ${fmtMs(s.ms)}${s.cached ? ' · earlier' : ''}` : st === 'failed' ? 'no answer' : 'checking…'}</span></li>`); });
       });
       // rows inserted already done stay still; a row that was "checking…" a moment ago draws its tick (#014)
       const wasRunning = new Set($$('li.src.running', el.sources).map((li) => li.dataset.name));
@@ -397,7 +402,7 @@ window.HTUI = (() => {
     }
     function evHTML(ev) {
       const items = ev.items || [];
-      return `<div class="nt-ev" data-for="${esc(ev.dim)}"><div class="nt-ev-h">${icon('doc')}Evidence for ${esc(ev.label || ev.dim)} · ${items.length} item${items.length === 1 ? '' : 's'}</div>${items.map((e) => `<div class="nt-ev-item"><p><span class="tag plain">${esc(sourceName(e))}</span> ${esc(plainLine(e.text, e))}</p>${e.image ? `<img src="${esc(e.image)}" alt="" loading="lazy">` : ''}<div class="nt-ev-meta">${esc(e.table || '')}${e.row ? ' · row ' + esc(e.row) : ''}${e.request_id ? ' · ' + esc(e.request_id) : ''}${e.read_by ? ' · read by ' + esc(modelName(e.read_by)) : ''}${e.mock ? ' · mock' : ''}</div></div>`).join('')}</div>`;
+      return `<div class="nt-ev" data-for="${esc(ev.dim)}"><div class="nt-ev-h">${icon('doc')}Evidence for ${esc(ev.label || ev.dim)} · ${items.length} item${items.length === 1 ? '' : 's'}</div>${items.map((e) => `<div class="nt-ev-item"><p><span class="tag plain">${esc(sourceName(e))}</span> ${esc(plainLine(e.text, e))}</p>${e.image ? `<img src="${esc(e.image)}" alt="" loading="lazy">` : ''}<div class="nt-ev-meta" title="${esc(provTitle(e))}">${esc(e.table || '')}${e.row ? ' · row ' + esc(e.row) : ''}${esc(prov(e))}${e.read_by ? ' · read by ' + esc(modelName(e.read_by)) : ''}</div></div>`).join('')}</div>`;
     }
     function renderMain(rec, flash) {
       if (!rec) return;
@@ -563,7 +568,7 @@ window.HTUI = (() => {
       const tags = c ? pill(c.status) + (c.hard && c.status === 'unknown' ? tag('confirm', 'To confirm') : '') + (c.status !== 'supported' ? nextTag(c.next) : '') : '';
       return `<article class="pp-card${c ? ' ' + esc(c.status) : ''}" data-dim="${esc(x.dim)}" data-status="${c ? esc(c.status) : ''}" data-stages="${esc(stages)}" role="listitem">
         <button type="button" class="pp-card-btn" aria-expanded="false"${x.ev.length ? '' : ' disabled'}><span class="t">${esc(x.label)}</span><span class="v">${esc(line)}</span><span class="f">${tags}${srcs ? `<span class="src">${srcs}</span>` : ''}</span></button>
-        <div class="pp-ev" hidden>${x.ev.map((e) => `<div class="pp-ev-item"><span class="tag plain">${esc(sourceName(e))}</span><p>${esc(plainLine(e.text, e))}</p>${e.image ? `<img src="${esc(e.image)}" alt="" loading="lazy">` : ''}<span class="m">${esc(e.table || '')}${e.row ? ' · row ' + esc(e.row) : ''}${e.request_id ? ' · ' + esc(e.request_id) : e.material_id ? ' · ' + esc(e.material_id) : ''}${e.read_by ? ' · read by ' + esc(modelName(e.read_by)) : ''}</span></div>`).join('')}</div></article>`;
+        <div class="pp-ev" hidden>${x.ev.map((e) => `<div class="pp-ev-item"><span class="tag plain">${esc(sourceName(e))}</span><p>${esc(plainLine(e.text, e))}</p>${e.image ? `<img src="${esc(e.image)}" alt="" loading="lazy">` : ''}<span class="m" title="${esc(provTitle(e))}">${esc(e.table || '')}${e.row ? ' · row ' + esc(e.row) : ''}${e.via || e.request_id ? esc(prov(e)) : e.material_id ? ' · ' + esc(e.material_id) : ''}${e.read_by ? ' · read by ' + esc(modelName(e.read_by)) : ''}</span></div>`).join('')}</div></article>`;
     }
     function openPeek(id) {
       const L = catalog.get(id) || (cards.get(id) && cards.get(id).L); if (!L) return;

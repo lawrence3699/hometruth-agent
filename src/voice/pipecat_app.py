@@ -53,6 +53,7 @@ import phraser  # noqa: E402
 import inbox  # noqa: E402  中介回复的收件箱：runs/inbox/<renter>.jsonl（/api/inbox）
 import memory  # noqa: E402  欢迎回来：runs/memory/<renter>.json
 import policy  # noqa: E402
+import zetaris_live  # noqa: E402
 import tts as mac_tts  # noqa: E402  只在 --fake-speech 用：macOS say + runs/tts_cache
 import eleven
 import tone  # noqa: E402  嘴可切换：TTS_PROVIDER=elevenlabs 时用
@@ -773,7 +774,7 @@ def serve(cfg: Config) -> None:
         parser = await asyncio.to_thread(policy.needs_llm_ready)
         return dict(cfg.describe(), llm=f"{sel.label} · {sel.model}" if sel.name != "none" else "none", llm_reason=sel.reason,
                     needs_parser="llm" if parser else "rules", pipecat=importlib.metadata.version("pipecat-ai"), server_time=time.time(),
-                    memory=policy.hello_view(renter))
+                    zetaris=zetaris_live.status(), memory=policy.hello_view(renter))
 
     @app.post("/api/forget")
     async def forget(body: dict):  # 界面上的 Forget me：记忆、收件箱、信念日志一起删
@@ -1035,7 +1036,9 @@ def main() -> int:
         print("真语音版起不来，还缺：\n  - " + "\n  - ".join(cfg.problems()) + "\n没 key 先用 --fake-speech 演示。", flush=True)
         return 2
     d = cfg.describe()
-    print(f"HomeTruth voice (Pipecat) on http://{cfg.host}:{cfg.port}  (mode={d['mode']}, stt={d['stt']}, tts={d['tts']}, "
+    if zetaris_live.enable():  # same as server.py: searches query the evidence through Zetaris (the tables point at the 8630 endpoint)
+        zetaris_live.warm([s["name"] for s in policy.SOURCES], [L["id"] for L in policy.LISTINGS])
+    print(f"HomeTruth voice (Pipecat) on http://{cfg.host}:{cfg.port}  (zetaris={'live' if zetaris_live.ENABLED else 'off'}, mode={d['mode']}, stt={d['stt']}, tts={d['tts']}, "
           f"needs parser={'llm' if policy.needs_llm_ready() else 'rules'}, narration={d['narration']}, turn={d['turn']})", flush=True)
     serve(cfg)
     return 0
