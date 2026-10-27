@@ -45,6 +45,33 @@ window.HTUI = (() => {
   const SITE_NAMES = { 'domain.com.au': 'Domain', domain: 'Domain', 'realestate.com.au': 'realestate.com.au', rea: 'realestate.com.au' };
   const siteName = (L) => { const s = (L && L.source && L.source.site) || ''; return SITE_NAMES[s] || s || 'the listing site'; };
   const photoTag = (L) => (isReal(L) ? `${siteName(L)} listing ${L.source.listing_id}${L.source.agency ? ' · ' + L.source.agency : ''}` : 'Illustrative photo, not this place');
+  // listing-card photos often come as a portrait shot padded to 4:3 with white bars; on a cover or a tile the bars read as empty margins,
+  // so crop them off once the image has loaded (same-origin files only; the lightbox still opens the file as it is)
+  const unbarred = new Map();
+  const pic = (src) => unbarred.get(src) || src;
+  function unbar(img) {
+    const src = img.getAttribute('src') || '';
+    if (!src || src.startsWith('data:') || img.dataset.unbar) return;
+    img.dataset.unbar = '1';
+    if (unbarred.has(src)) { if (unbarred.get(src)) img.src = unbarred.get(src); return; }
+    try {
+      const w = img.naturalWidth, h = img.naturalHeight; if (!w || !h) return;
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, w, h).data;
+      const white = (i) => d[i] > 238 && d[i + 1] > 238 && d[i + 2] > 238;
+      const col = (x) => { for (let y = 0; y < h; y += 3) if (!white((y * w + x) * 4)) return false; return true; };
+      const row = (y) => { for (let x = 0; x < w; x += 3) if (!white((y * w + x) * 4)) return false; return true; };
+      let l = 0, r = w - 1, t = 0, b = h - 1;
+      while (l < w / 3 && col(l)) l++; while (r > w * 2 / 3 && col(r)) r--;
+      while (t < h / 3 && row(t)) t++; while (b > h * 2 / 3 && row(b)) b--;
+      if (l + (w - 1 - r) < w * 0.06 && t + (h - 1 - b) < h * 0.06) { unbarred.set(src, null); return; }
+      const o = document.createElement('canvas'); o.width = r - l + 1; o.height = b - t + 1;
+      o.getContext('2d').drawImage(c, l, t, o.width, o.height, 0, 0, o.width, o.height);
+      const url = o.toDataURL('image/jpeg', 0.92); unbarred.set(src, url); img.src = url;
+    } catch (_) { unbarred.set(src, null); }
+  }
+  document.addEventListener('load', (e) => { const im = e.target; if (im.tagName === 'IMG' && im.closest('.nt-cover, .nt-mini, .cv, .pp-tile, .pp-photos')) unbar(im); }, true);
   const EXAMPLE = 'Two bedrooms near Central, under 900 a week, I have a cat, moving mid November';
   const EXAMPLES = [EXAMPLE, 'A one-bedroom near UNSW under 700, moving early December', 'Two bedrooms in Kensington with a dog, under 950 a week'];
   const FIELD_OF = { A1: 'budget', B1: 'bedrooms', G1: 'anchor', A4: 'move_in', J1: 'pets' };
@@ -356,7 +383,7 @@ window.HTUI = (() => {
       el.props.innerHTML = NEEDS.map(([dim, name, ic]) => {
         const c = byDim.get(dim);
         const v = c ? `<span class="tag need ${c.cls}${c.fresh ? ' fx-new' : ''}" style="--d:${c.i * 50}ms"${c.cls.includes('remembered') ? ' title="From last time"' : ''}>${c.cls.includes('set') ? `<span class="tk">${TICK}</span>` : ''}${esc(c.text)}</span>` : 'Empty';
-        return `<div class="nt-prop"><span class="k">${icon(ic)}${name}</span><span class="v${c ? '' : ' empty'}">${v}</span></div>`;
+        return `<div class="nt-prop${c ? ' has' : ''}" title="${name}"><span class="k">${icon(ic)}<span class="nm">${name}</span></span><span class="v${c ? '' : ' empty'}">${v}</span></div>`;  // once filled, the icon says which need it is
       }).join('') + chips.filter((c) => c.dim.startsWith('extra')).map((c) => `<div class="nt-prop"><span class="k">${icon('sparkle')}Also</span><span class="v"><span class="tag need set">${esc(c.text)}</span></span></div>`).join('');
       el.sideNeeds.innerHTML = chips.length ? chips.map((c) => `<li class="need-${c.cls.split(' ')[0]}">${icon(c.ic)}<span>${esc(c.text)}</span></li>`).join('') : '<li class="muted">Nothing yet</li>';
     }
@@ -375,7 +402,9 @@ window.HTUI = (() => {
         if (!here.length && !STAGE_EMPTY[st]) return;
         out.push(`<li class="stg">${esc(name)}${!here.length ? `<small>${esc(STAGE_EMPTY[st])}</small>` : ''}</li>`);
         here.forEach((s) => { const st = s.status === 'done' || s.status === 'failed' ? s.status : 'running';
-          const tip = s.via === 'zetaris' ? `Zetaris${s.request_id ? ' query ' + s.request_id : ''}${s.cached ? ' (earlier query)' : ''}\n${s.sql || ''}${s.error ? '\n' + s.error : ''}` : (s.table || '') + ' · ' + (s.request_id || '') + (s.mock ? ' · simulated' : '');
+          // a long IN (…) list of listing ids made the hover note a wall of text over the page; count them instead
+          const sql = String(s.sql || '').replace(/IN \(([^)]{60,})\)/g, (m, ids) => `IN (${ids.split(',').length} listings)`);
+          const tip = s.via === 'zetaris' ? `Zetaris${s.request_id ? ' query ' + s.request_id : ''}${s.cached ? ' (earlier query)' : ''}\n${sql}${s.error ? '\n' + s.error : ''}` : (s.table || '') + ' · ' + (s.request_id || '') + (s.mock ? ' · simulated' : '');
           out.push(`<li class="src ${st}" data-name="${esc(s.name)}" title="${esc(tip)}"><span class="ck">${TICK}</span><span class="nm">${esc((s.label || s.name).replace(/-/g, '‑'))}</span><span class="n">${st === 'done' ? `${Number(s.rows || 0).toLocaleString('en-AU')} rows · ${fmtMs(s.ms)}${s.cached ? ' · earlier' : ''}` : st === 'failed' ? 'no answer' : 'checking…'}</span></li>`); });
       });
       // rows inserted already done stay still; a row that was "checking…" a moment ago draws its tick (#014)
@@ -425,16 +454,20 @@ window.HTUI = (() => {
         const sp = $('.nt-special', cur); if (sp && !special) sp.remove(); else if (!sp && special) $('.nt-checks', cur).insertAdjacentHTML('afterend', special);
         renderOthers(); followLit(cur); return;
       }
+      // edge-to-edge photo strip (the listing's first photos, one big + two small), then rank, address and the icon row on one line
+      const pics = [...new Set([...(C.images || []).map((im) => im.url), coverOf(L)].filter(Boolean))].slice(0, 3);
       const html_ = `<article class="nt-place" data-id="${esc(L.id)}">
-        <div class="nt-cover">${coverOf(L) ? `<img src="${esc(coverOf(L))}" alt="">` : ''}<span class="nt-credit">${esc(photoTag(C.id ? C : L))}</span></div>
+        ${pics.length ? `<div class="nt-cover n${pics.length}">${pics.map((src, i) => `<button type="button" class="nt-cover-t" data-open="${esc(L.id)}" aria-label="Open the page for ${esc(street)}"${i ? ' tabindex="-1"' : ''}><img src="${esc(pic(src))}" alt=""${i ? ' loading="lazy"' : ''}></button>`).join('')}</div>` : ''}
         <div class="nt-place-in">
-          <div class="nt-place-icon">#${rec.rank}</div>
-          <h3 class="nt-place-title">${titleHTML}</h3><p class="nt-place-sub">${esc(suburb)}${C.postcode ? ' ' + esc(C.postcode) : ''}</p>
-          <div class="nt-place-specs">${specRow({ ...L, parking: L.parking != null ? L.parking : C.parking })}${isReal(C) ? tag('real', 'Real listing') : tag('synthetic', 'Synthetic place')}</div>
+          <div class="nt-place-head">
+            <div class="nt-place-name"><div class="nt-place-top"><span class="nt-place-icon">#${rec.rank}</span>${isReal(C) ? tag('real', 'Real listing') : tag('synthetic', 'Synthetic place')}</div>
+              <h3 class="nt-place-title">${titleHTML}</h3><p class="nt-place-sub">${esc(suburb)}${C.postcode ? ' ' + esc(C.postcode) : ''}</p></div>
+            <div class="nt-place-specs">${specRow({ ...L, parking: L.parking != null ? L.parking : C.parking })}</div>
+          </div>
           <div class="nt-checks-h"><h4>Checks</h4><div class="nt-counts">${countsHTML}</div></div>
           <div class="nt-checks" role="list">${rowsHTML}</div>
           ${special}
-          <div class="nt-place-acts"><button type="button" class="nt-btn nt-btn-secondary nt-btn-sm" data-open="${esc(L.id)}">Open page</button></div>
+          <div class="nt-place-acts"><button type="button" class="nt-btn nt-btn-secondary nt-btn-sm" data-open="${esc(L.id)}">Open page</button><span class="nt-place-credit">Photos: ${esc(photoTag(C.id ? C : L))}</span></div>
         </div></article>`;
       let host = $('.nt-walk', el.walk);
       if (!host) { el.walk.innerHTML = '<div class="nt-walk"><div id="main-slot"></div><aside class="nt-others" id="others"></aside></div>'; host = $('.nt-walk', el.walk); }
