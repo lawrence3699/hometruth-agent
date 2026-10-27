@@ -471,6 +471,9 @@ html:not([data-stage=home]) .nt-win-body{min-height:calc(100vh - 170px)}
 .nt-gcard .s{display:block;margin-top:2px;font-size:14px;line-height:20px;color:var(--ink-3)}
 .nt-more{display:inline-flex;align-items:center;gap:10px;margin:28px 0 0;padding:6px 6px 6px 0;border:0;background:none;font-size:16px;font-weight:600;cursor:pointer}
 .nt-more:hover .nt-arrow-btn{transform:scale(1.08)}
+/* 浏览网格分页（10-27，150 套房）：一行安静的计数 + 次级按钮 Show more，居中在网格下面 */
+.nt-gpage{display:flex;flex-direction:column;align-items:center;gap:12px;margin:36px 0 0;text-align:center}
+.nt-gpage .nt-small{font-variant-numeric:tabular-nums}
 .nt-gcard .price{margin-left:auto;font-size:14px;line-height:22px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 /* #056 rolling digits */
 .fx-od{display:inline-block;height:1.25em;overflow:hidden;vertical-align:-.26em;line-height:1.25em}

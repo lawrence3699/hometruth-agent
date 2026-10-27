@@ -14,7 +14,9 @@ Nightshift，转发不通或没有视觉车道就直连 NVIDIA，走了哪条如
   api_post(body) / api_get(query) / forget(renter)
                               server.py 的 POST / GET /api/style 和 /api/forget 顺手调的清理。结果在 runs/style/<renter>.json，原图在
                               runs/style/uploads/<renter>/（runs/ 不进 git，也不对外提供静态访问）。
-跑：python3 src/photo/style.py warm [--force] [--listing L-0002] [--timeout 150]    预读全部挂牌照片（已读过的跳过；--force 重读；接口不稳时放宽预算）
+跑：python3 src/photo/style.py warm [--force] [--listing L-0002] [--timeout 150] [--workers 3]
+                                                                 预读全部挂牌照片（已读过的跳过；--force 重读；接口不稳时放宽预算；--workers 几套房并行，
+                                                                 看图调用本身仍按 STYLE_MODEL_SLOTS 限流，默认 1 = 串行，见 _model_gate）
     python3 src/photo/style.py demo --images a.jpg b.jpg             打印参考 profile 和每套房的分数表
 环境同 facts.py：.env 里的 NVIDIA_API_KEY / METERLESS_*；NVIDIA_VL_MODEL 默认 nvidia/nemotron-3.5-super-vl-120b-a12b。缩图要 Pillow（requirements-voice.txt 里有）。
 """
@@ -27,11 +29,13 @@ import datetime as dt
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -95,7 +99,32 @@ USER_LISTING = "This is the lead photo of a rental listing. Fill the JSON for it
 
 _read_lock = threading.Lock()  # 两位租客同时上传时，缺的挂牌照片只读一遍
 NO_RETRY = ("unauthorized", "no_provider", "refused", "model_not_found", "bad_request", "rate_limited")  # 这些再试也一样（429 在 provider 里已重试过一次）
-_model_lock = threading.Lock()  # NVIDIA 直连并发两个以上就整批回 500（10-27 实测），所以看图一次只发一张
+# NVIDIA 直连并发两个以上就整批回 500（10-27 实测，DECISIONS 10-27），所以看图默认一次只发一张；warm --workers 并行的只是读盘、缩图、查缓存。
+# 接口稳了想真并发：STYLE_MODEL_SLOTS=3（同时在途的看图调用数；写在 .env 或 shell 里都行），不设就是 1。
+# 闸门第一次看图时才建（_model_gate），那时 main() / server.main() 已经 load_env 过，.env 里的 STYLE_MODEL_SLOTS 才读得到。
+
+
+def _model_slots() -> int:
+    try:
+        return max(1, int(os.environ.get("STYLE_MODEL_SLOTS") or 1))
+    except ValueError:
+        return 1
+
+
+_model_lock: Optional[threading.BoundedSemaphore] = None
+_gate_lock = threading.Lock()
+
+
+def _model_gate() -> threading.BoundedSemaphore:
+    """看图调用的闸门（同时在途最多 STYLE_MODEL_SLOTS 个，默认 1）；进程里第一次用时按当时的环境变量建好，之后不变。"""
+    global _model_lock
+    with _gate_lock:
+        if _model_lock is None:
+            _model_lock = threading.BoundedSemaphore(_model_slots())
+        return _model_lock
+
+
+_append_lock = threading.Lock()  # warm --workers 并行时，缓存 / 错误日志一次追加一整行，不交错
 
 
 # ---------------------------------------------------------------- 工具
@@ -122,8 +151,9 @@ def _json_object(text: str) -> Optional[dict]:
 
 def _append(path: Path, row: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    line = json.dumps(row, ensure_ascii=False) + "\n"
+    with _append_lock, path.open("a", encoding="utf-8") as f:
+        f.write(line)
 
 
 def _note_error(where: str, err: str, **extra: Any) -> None:
@@ -203,14 +233,14 @@ def thumb(data: bytes, max_side: int = MAX_SIDE) -> bytes:
 def ask_model(image: bytes, task: str, user_text: str, timeout: float = TIMEOUT_S) -> Tuple[dict, "llm.ChatResult", str, str]:
     """一张图问一次模型。路由和 facts.ask_model 一样：先 Nightshift 的视觉路由，被拒（没有视觉车道）或连不上就直连 NVIDIA，走了哪条如实返回。
     预算 timeout 秒内最多 len(TEMPS) 次尝试，每次 ≤ ATTEMPT_S 秒（最后一次用掉剩下的）：超时 / 服务端 500 / 不是 JSON 就换个温度再试
-    （10-27 实测：NVIDIA 的看图接口这几天不稳，同一张图有时 2 s 回、有时 60 s 不回或直接 500，和图、提示词无关）。全程串行（_model_lock：
-    并发两个以上它整批回 500）。返回 (模型的 JSON, ChatResult, route, Nightshift 拒绝的原因)；都失败抛最后的 llm.LLMError / RuntimeError，调用方兜住。
+    （10-27 实测：NVIDIA 的看图接口这几天不稳，同一张图有时 2 s 回、有时 60 s 不回或直接 500，和图、提示词无关）。默认全程串行（_model_gate：
+    并发两个以上它整批回 500；STYLE_MODEL_SLOTS 可放开）。预算从拿到闸门那一刻起算：排队等前一张图的时间不算（warm --workers 时
+    排在卡住的调用后面的房子不会一上来就 "no time left"）。返回 (模型的 JSON, ChatResult, route, Nightshift 拒绝的原因)；都失败抛最后的 llm.LLMError / RuntimeError，调用方兜住。
     测试里 monkeypatch 这个函数。"""
     b64 = base64.b64encode(image).decode("ascii")
     msgs = [{"role": "system", "content": SYSTEM},
             {"role": "user", "content": [{"type": "text", "text": user_text},
                                          {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}]}]
-    deadline = time.time() + timeout
     provider: Optional[str] = None  # None = 让 provider.py 选（Nightshift 优先）；被拒一次后面的尝试直接 nvidia
     route, reason = "", ""
     last: Optional[Exception] = None
@@ -218,7 +248,8 @@ def ask_model(image: bytes, task: str, user_text: str, timeout: float = TIMEOUT_
     def chat(prov: Optional[str], temperature: float, per: float) -> "llm.ChatResult":
         return llm.chat(msgs, task=task, provider=prov, vision=True, temperature=temperature, max_tokens=MAX_TOKENS, timeout=max(3.0, per), retries=1)
 
-    with _model_lock:
+    with _model_gate():
+        deadline = time.time() + timeout  # 拿到闸门才开始计时
         for attempt, temperature in enumerate(TEMPS):
             if attempt:
                 time.sleep(2.0)
@@ -410,42 +441,52 @@ def read_listing(L: dict, path: Path, data: bytes, timeout: float = TIMEOUT_S) -
 
 
 def listing_profiles(read_missing: bool = True, force: bool = False, only: Optional[str] = None, verbose: bool = False,
-                     timeout: float = TIMEOUT_S) -> Dict[str, dict]:
+                     timeout: float = TIMEOUT_S, workers: int = 1) -> Dict[str, dict]:
     """{listing_id: profile}，profile = normalize(reading) + source（文件、sha256、路由、模型、毫秒、时间）。
-    缓存按文件 sha256（runs/style_facts.jsonl）；read_missing 时没读过的现读（force 全部重读）；照片不在盘上或读失败的跳过（verbose 打印）。"""
+    缓存按文件 sha256（runs/style_facts.jsonl）；read_missing 时没读过的现读（force 全部重读）；照片不在盘上或读失败的跳过（verbose 打印）。
+    workers > 1：几套房并行（warm --workers；缓存追加有 _append_lock，看图调用仍受 _model_gate 限流，排队不占预算）；结果顺序和矩阵一致。"""
+
+    def one(L: dict, cache: Dict[str, dict]) -> Optional[dict]:
+        lid = L["id"]
+        path = photo_path(L)
+        if path is None or not path.exists():
+            if verbose:
+                print(f"style {lid}: no lead photo on disk ({(L.get('photo') or {}).get('url')!r}), skipped")
+            return None
+        data = path.read_bytes()
+        row = cache.get(sha256(data))
+        if row is None:
+            if not read_missing:
+                return None
+            t0 = time.time()
+            try:
+                row = read_listing(L, path, data, timeout)
+            except Exception as e:
+                _note_error("listing_profiles", f"{type(e).__name__}: {str(e)[:300]}", listing=lid)
+                if verbose:
+                    print(f"style {lid} ({path.name}): FAILED after {round((time.time() - t0) * 1000)} ms: {str(e)[:160]}")
+                return None
+            if verbose:
+                print(f"style {lid} ({path.name}): via {row['route']} {row['served_model']} in {row['ms']} ms → {json.dumps(normalize(row['reading']), ensure_ascii=False)[:200]}")
+        elif verbose:
+            print(f"style {lid} ({path.name}): cached ({row.get('ts')}, {row.get('served_model')})")
+        prof = normalize(row["reading"])
+        prof["source"] = {k: row.get(k) for k in ("file", "sha256", "route", "provider", "model", "served_model", "ms", "ts")}
+        prof["source"]["image"] = (L.get("photo") or {}).get("url")
+        return prof
+
     out: Dict[str, dict] = {}
     with _read_lock:
         cache = {} if force else cached_rows()
-        for L in load_listings():
-            lid = L.get("id")
-            if not lid or (only and lid != only):
-                continue
-            path = photo_path(L)
-            if path is None or not path.exists():
-                if verbose:
-                    print(f"style {lid}: no lead photo on disk ({(L.get('photo') or {}).get('url')!r}), skipped")
-                continue
-            data = path.read_bytes()
-            row = cache.get(sha256(data))
-            if row is None:
-                if not read_missing:
-                    continue
-                t0 = time.time()
-                try:
-                    row = read_listing(L, path, data, timeout)
-                except Exception as e:
-                    _note_error("listing_profiles", f"{type(e).__name__}: {str(e)[:300]}", listing=lid)
-                    if verbose:
-                        print(f"style {lid} ({path.name}): FAILED after {round((time.time() - t0) * 1000)} ms: {str(e)[:160]}")
-                    continue
-                if verbose:
-                    print(f"style {lid} ({path.name}): via {row['route']} {row['served_model']} in {row['ms']} ms → {json.dumps(normalize(row['reading']), ensure_ascii=False)[:200]}")
-            elif verbose:
-                print(f"style {lid} ({path.name}): cached ({row.get('ts')}, {row.get('served_model')})")
-            prof = normalize(row["reading"])
-            prof["source"] = {k: row.get(k) for k in ("file", "sha256", "route", "provider", "model", "served_model", "ms", "ts")}
-            prof["source"]["image"] = (L.get("photo") or {}).get("url")
-            out[lid] = prof
+        todo = [L for L in load_listings() if L.get("id") and not (only and L["id"] != only)]
+        if workers > 1 and len(todo) > 1:
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="style-warm") as pool:
+                profs = list(pool.map(lambda L: one(L, cache), todo))
+        else:
+            profs = [one(L, cache) for L in todo]
+        for L, prof in zip(todo, profs):
+            if prof is not None:
+                out[L["id"]] = prof
     return out
 
 
@@ -576,10 +617,10 @@ def forget(renter: Any) -> dict:
 
 
 # ---------------------------------------------------------------- CLI
-def warm(force: bool = False, only: Optional[str] = None, timeout: float = TIMEOUT_S) -> Dict[str, dict]:
+def warm(force: bool = False, only: Optional[str] = None, timeout: float = TIMEOUT_S, workers: int = 3) -> Dict[str, dict]:
     t0 = time.time()
     before = {r["sha256"] for r in _log_rows()}
-    profs = listing_profiles(read_missing=True, force=force, only=only, verbose=True, timeout=timeout)
+    profs = listing_profiles(read_missing=True, force=force, only=only, verbose=True, timeout=timeout, workers=workers)
     rows = [r for r in _log_rows() if force or r["sha256"] not in before]
     routes = sorted({r["route"] for r in rows})
     models = sorted({r["served_model"] for r in rows})
@@ -634,10 +675,11 @@ def main() -> int:
     ap.add_argument("--listing", help="warm：只读这一套，如 L-0002")
     ap.add_argument("--force", action="store_true", help="warm：已读过的也重读")
     ap.add_argument("--timeout", type=float, default=TIMEOUT_S, help=f"warm：每张图的总预算秒数（默认 {TIMEOUT_S:.0f}；接口不稳时给 150，多试一次）")
+    ap.add_argument("--workers", type=int, default=3, help="warm：几套房并行（默认 3；看图调用本身另受 STYLE_MODEL_SLOTS 限流，默认 1）")
     a = ap.parse_args()
     llm.load_env()
     if a.step == "warm":
-        warm(a.force, a.listing, a.timeout)
+        warm(a.force, a.listing, a.timeout, max(1, a.workers))
         return 0
     if not a.images:
         ap.error("demo needs --images a.jpg [b.jpg c.jpg]")

@@ -6,7 +6,7 @@
    (sidebar: needs, sources, shortlist; page: properties, a callout with what it says, database views); grey bento cards, bordered cards,
    a scroll-filled sentence, a template-style gallery, a Q&A accordion, a grey CTA band and the column footer. A place opens as a Notion
    side peek. Motion: notion-fx.js (Lucian UX/UI Prompt ports). Every word on a card still comes from the server's events and
-   /api/listings; the photos of the five synthetic places are illustrative design photos, the nine real places carry their own. */
+   /api/listings; the photos of the synthetic places are illustrative design photos, the real places carry their own. */
 import * as fx from './notion-fx.js?v=3';
 import { LOGO, HOUSE, CLIPBOARD, KEY, ASK, PEEK } from './ink.js?v=3';
 import { createAgentsOrb } from '../qi/agents-orb.js?v=8';
@@ -41,7 +41,10 @@ window.HTUI = (() => {
   const modelName = (m) => (/nemotron.*vl|vl.*nemotron|nemotron-3\.5-super/i.test(String(m)) ? 'Nemotron VL' : /nemotron/i.test(String(m)) ? 'Nemotron' : String(m));
   const splitTitle = (L) => { const t = String(L.title || L.id || ''); const i = t.lastIndexOf(', '); return i > 0 ? [t.slice(0, i), L.suburb || t.slice(i + 2)] : [t, L.suburb || '']; };
   const isReal = (L) => !!(L && L.source && L.source.listing_id);
-  const photoTag = (L) => (isReal(L) ? `${L.source.site === 'domain.com.au' ? 'Domain' : L.source.site} listing ${L.source.listing_id}${L.source.agency ? ' · ' + L.source.agency : ''}` : 'Illustrative photo, not this place');
+  // 真房源来自哪个网站：矩阵里 source.site 是 "domain.com.au" / "realestate.com.au"（导入脚本的 site 字段 "domain" / "rea" 也认）
+  const SITE_NAMES = { 'domain.com.au': 'Domain', domain: 'Domain', 'realestate.com.au': 'realestate.com.au', rea: 'realestate.com.au' };
+  const siteName = (L) => { const s = (L && L.source && L.source.site) || ''; return SITE_NAMES[s] || s || 'the listing site'; };
+  const photoTag = (L) => (isReal(L) ? `${siteName(L)} listing ${L.source.listing_id}${L.source.agency ? ' · ' + L.source.agency : ''}` : 'Illustrative photo, not this place');
   const EXAMPLE = 'Two bedrooms near Central, under 900 a week, I have a cat, moving mid November';
   const EXAMPLES = [EXAMPLE, 'A one-bedroom near UNSW under 700, moving early December', 'Two bedrooms in Kensington with a dog, under 950 a week'];
   const FIELD_OF = { A1: 'budget', B1: 'bedrooms', G1: 'anchor', A4: 'move_in', J1: 'pets' };
@@ -120,7 +123,7 @@ window.HTUI = (() => {
   const LABELS = [['supported', 'A source says so.'], ['inferred', 'Likely, not confirmed.'], ['conflict', 'Goes against you.'], ['unknown', 'Nothing on file yet.']];
   const FAQ = [
     ['What do the four labels mean?', 'Supported: a source says so. Inferred: likely, not confirmed. Conflict: goes against what you need. Unknown: nothing on file. An unknown must-have is “To confirm”, never a yes.'],
-    ['Where do the places come from?', 'Nine real Sydney rentals from Domain (26 Oct 2026), credited to their agencies. Five synthetic ones on fictional streets, with illustrative photos.'],
+    ['Where do the places come from?', 'Real Sydney rentals from public listing pages, credited to their agencies, and synthetic ones on fictional streets with illustrative photos.', 'src'],  // 数字和网站在 /api/listings 到了以后按真数据重写（sourcesLine）
     ['Who reads the photos and floor plans?', 'NVIDIA Nemotron’s vision model. It describes what is in the picture; it never decides the ranking.'],
     ['Is the 3D plan a scan?', 'No. It is raised from the listing’s floor plan, with its photos placed in the rooms. Sizes are indicative.'],
     ['What does it never look at?', 'Who lives nearby. No ethnicity, nationality, age group or student share, ever.'],
@@ -223,12 +226,13 @@ window.HTUI = (() => {
     <div class="fx-seg" id="ex-unit" role="tablist" aria-label="Show rent"><button type="button" data-u="week" class="is-on">Per week</button><button type="button" data-u="month">Per month</button><i class="fx-knob" aria-hidden="true"></i></div>
   </div>
   <div class="nt-gallery" id="gallery"><p class="nt-small">Loading places…</p></div>
+  <div class="nt-gpage" id="gallery-page" hidden><p class="nt-small" id="gallery-count" aria-live="polite"></p><button type="button" class="nt-btn nt-btn-secondary nt-btn-sm" id="gallery-more">Show more</button></div>
   <button type="button" class="nt-more" data-mag-host data-refine>Refine with a conversation <span class="nt-arrow-btn">${icon('arrow', '')}</span></button>
 </section>
 
 <section class="nt-sec nt-wrap" id="faq" aria-labelledby="faq-title">
   <div class="nt-faq"><div><h2 class="nt-h3 fx-head" id="faq-title">Questions</h2></div>
-  <div class="nt-acc" id="acc">${FAQ.map(([q, a], i) => `<div class="fx-acc"><button type="button" class="fx-acc-q" aria-expanded="false" aria-controls="faq-a${i}">${esc(q)}<span class="fx-acc-pm" aria-hidden="true"></span></button><div class="fx-acc-body" id="faq-a${i}"><div class="fx-acc-a"><p>${esc(a)}</p></div></div></div>`).join('')}</div></div>
+  <div class="nt-acc" id="acc">${FAQ.map(([q, a, k], i) => `<div class="fx-acc"><button type="button" class="fx-acc-q" aria-expanded="false" aria-controls="faq-a${i}">${esc(q)}<span class="fx-acc-pm" aria-hidden="true"></span></button><div class="fx-acc-body" id="faq-a${i}"><div class="fx-acc-a"><p${k ? ` id="faq-${k}"` : ''}>${esc(a)}</p></div></div></div>`).join('')}</div></div>
 </section>
 
 <section class="nt-cta" aria-labelledby="cta-title">
@@ -273,6 +277,8 @@ window.HTUI = (() => {
     const metaMap = new Map();
     const catalog = new Map();      // /api/listings, by id
     let profile = null, filter = 'all', unit = 'week';
+    const PAGE = 24;                // 浏览网格一次画 24 张，"Show more" 再加 24 张（150 套房时一次全画太重）
+    let shown = PAGE;
     let lastScrollByUser = 0;
     ['wheel', 'touchmove', 'keydown'].forEach((e) => addEventListener(e, () => { lastScrollByUser = performance.now(); }, { passive: true }));
 
@@ -511,29 +517,67 @@ window.HTUI = (() => {
 
     /* ---------- explore: the gallery ---------- */
     const priceText = (L) => (unit === 'week' ? `${money(L.rent)} / wk` : `${money(Math.round((L.rent * 52) / 12))} / mo`);
-    function renderGallery() {
-      const all = [...catalog.values()];
-      const list = all.filter((L) => (filter === 'all' ? true : filter === 'real' ? isReal(L) : !isReal(L)));
-      $('#n-all').textContent = all.length; $('#n-real').textContent = all.filter(isReal).length; $('#n-syn').textContent = all.filter((L) => !isReal(L)).length;
-      el.gallery.innerHTML = list.map((L) => {
-        const [st, sb] = splitTitle(L);
-        return `<button type="button" class="nt-gcard fx-card" data-open="${esc(L.id)}">
-          <span class="cv">${coverOf(L) ? `<img src="${esc(coverOf(L))}" alt="" loading="lazy">` : ''}<span class="tags">${isReal(L) ? tag('real', 'Real listing') : tag('synthetic', 'Synthetic')}${L.floorplan ? tag('plain', '3D plan') : ''}</span></span>
-          <span class="meta"><span class="av" aria-hidden="true">${isReal(L) ? 'D' : 'S'}</span><span><span class="t">${esc(st)}</span><span class="s">${esc(sb)}</span>${specRow(L, { rent: false, date: false, cls: 'sm' })}</span><span class="price" data-price="${esc(L.id)}">${priceText(L)}</span></span></button>`;
-      }).join('');
-      $$('[data-price]', el.gallery).forEach((n) => { n.dataset.val = n.textContent; });
-      fx.reveal($$('.nt-gcard', el.gallery));
+    const galleryList = () => [...catalog.values()].filter((L) => (filter === 'all' ? true : filter === 'real' ? isReal(L) : !isReal(L)));
+    const cardHTML = (L) => {
+      const [st, sb] = splitTitle(L);
+      return `<button type="button" class="nt-gcard fx-card" data-open="${esc(L.id)}">
+          <span class="cv">${coverOf(L) ? `<img src="${esc(coverOf(L))}" alt="" loading="lazy">` : ''}<span class="tags">${isReal(L) ? tag('real', 'Real listing') : tag('synthetic', 'Synthetic')}${L.floorplan ? tag('plain', L.floorplan.has_3d === false ? 'Floor plan' : '3D plan') : ''}</span></span>
+          <span class="meta"><span class="av" aria-hidden="true">${isReal(L) ? esc(siteName(L).charAt(0).toUpperCase()) : 'S'}</span><span><span class="t">${esc(st)}</span><span class="s">${esc(sb)}</span>${specRow(L, { rent: false, date: false, cls: 'sm' })}</span><span class="price" data-price="${esc(L.id)}">${priceText(L)}</span></span></button>`;
+    };
+    // 画 list[from, to) 这几张：第一页整格重画，"Show more" 只追加新的（已画的卡片、风格角标、入场动效都不动）
+    function addCards(list, from, to) {
+      const tmp = document.createElement('div'); tmp.innerHTML = list.slice(from, to).map(cardHTML).join('');
+      const fresh = [...tmp.children]; el.gallery.append(...fresh);
+      fresh.forEach((c) => { const n = $('[data-price]', c); if (n) n.dataset.val = n.textContent; });
+      fx.reveal(fresh);
+      return fresh;
     }
+    function pageFooter(total) {
+      const box = $('#gallery-page'), more = $('#gallery-more'), n = Math.min(shown, total);
+      box.hidden = total === 0;
+      $('#gallery-count').textContent = n < total ? `Showing ${n} of ${total} places` : `Showing all ${total} place${total === 1 ? '' : 's'}`;
+      more.hidden = n >= total;
+    }
+    function renderGallery() {  // 第一页；筛选一变就回到第一页
+      const all = [...catalog.values()], list = galleryList();
+      $('#n-all').textContent = all.length; $('#n-real').textContent = all.filter(isReal).length; $('#n-syn').textContent = all.filter((L) => !isReal(L)).length;
+      shown = PAGE; el.gallery.innerHTML = '';
+      addCards(list, 0, shown);
+      pageFooter(list.length);
+    }
+    $('#gallery-more').addEventListener('click', (e) => {
+      const list = galleryList(), from = shown; shown = Math.min(from + PAGE, list.length);
+      const fresh = addCards(list, from, shown);
+      pageFooter(list.length);
+      if (e.currentTarget.hidden && fresh[0]) fresh[0].focus({ preventScroll: true });  // 按钮没了，键盘焦点交给第一张新卡片
+    });
     el.gallery.addEventListener('click', (e) => { const b = e.target.closest('[data-open]'); if (b) openPeek(b.dataset.open); });
     const exF = $('#ex-filter'), exU = $('#ex-unit');
     const placeF = fx.slider(exF, $('.fx-knob', exF)), placeU = fx.slider(exU, $('.fx-knob', exU));
     requestAnimationFrame(() => { placeF($('.is-on', exF), false); placeU($('.is-on', exU), false); });
     exF.addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (!b) return; $$('[data-f]', exF).forEach((o) => o.classList.toggle('is-on', o === b)); placeF(b); filter = b.dataset.f; renderGallery(); });
     exU.addEventListener('click', (e) => { const b = e.target.closest('[data-u]'); if (!b) return; $$('[data-u]', exU).forEach((o) => o.classList.toggle('is-on', o === b)); placeU(b); unit = b.dataset.u; $$('[data-price]', el.gallery).forEach((n) => fx.roll(n, priceText(catalog.get(n.dataset.price)))); });
+    // 页面上的数字都从 /api/listings 算，不写死（10-27：从 14 套涨到 150 套左右）
+    const sydney = (real) => (real.length && real.every((L) => +L.postcode >= 2000 && +L.postcode <= 2234) ? 'Sydney ' : '');  // 悉尼都市区的邮编段
+    // 抓取日按来源写的日历日算（2026-10-26T10:50+11:00 就是 26 Oct），不随看页面的人所在时区挪一天
+    const dayOf = (iso) => { const m = /^\d{4}-\d{2}-\d{2}/.exec(String(iso || '')); const d = m ? new Date(m[0] + 'T00:00:00') : null; return d && !isNaN(d) ? d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; };
+    function sourcesLine(all) {
+      const real = all.filter(isReal), syn = all.length - real.length, bySite = new Map();
+      real.forEach((L) => bySite.set(siteName(L), (bySite.get(siteName(L)) || 0) + 1));
+      const sites = [...bySite].sort((a, b) => b[1] - a[1]);
+      const days = [...new Set(real.map((L) => L.source.fetched_at).filter(Boolean).sort().map(dayOf).filter(Boolean))];
+      const when = days.length ? ` (saved ${days.length > 1 ? days[0] + ' to ' + days[days.length - 1] : days[0]})` : '';
+      const realPart = !real.length ? '' : sites.length === 1
+        ? `${real.length} real ${sydney(real)}rental${real.length === 1 ? '' : 's'} from ${sites[0][0]}${when}, credited to their agencies.`
+        : `${real.length} real ${sydney(real)}rentals, ${sites.map(([n, k]) => `${k} from ${n}`).join(' and ')}${when}, credited to their agencies.`;
+      const synPart = syn ? ` ${syn} synthetic one${syn === 1 ? '' : 's'} on fictional streets, with illustrative photos.` : '';
+      return (realPart + synPart).trim() || 'No places loaded yet.';
+    }
     fetch('/api/listings').then((r) => r.json()).then((d) => {
       (d.listings || []).forEach((L) => catalog.set(L.id, L));
-      const all = [...catalog.values()]; const real = all.filter(isReal).length;
-      $('#explore-lede').textContent = `${real} real Sydney rentals, ${all.length - real} synthetic.`;
+      const all = [...catalog.values()]; const real = all.filter(isReal);
+      $('#explore-lede').textContent = `${real.length} real ${sydney(real)}rentals, ${all.length - real.length} synthetic.`;
+      const src = $('#faq-src'); if (src) src.textContent = sourcesLine(all);
       renderGallery(); if (mainId) renderMain(cards.get(mainId));
     }).catch(() => { el.gallery.innerHTML = '<p class="nt-small">The list of places did not load. Is the server running?</p>'; });
 
@@ -586,15 +630,17 @@ window.HTUI = (() => {
       const n = rec ? counts(rec.L.cells) : null;
       const stagesHere = [...new Set(checks.flatMap((x) => x.ev.map(stageOf)))].filter((s) => STAGE_SHORT[s]);
       const tiles = photos.slice(0, photos.length >= 5 ? 5 : photos.length >= 3 ? 3 : photos.length);
-      const nav = [['pp-checks', 'Checks', nChecks], photos.length ? ['pp-photos', 'Photos', photos.length] : null, L.floorplan ? ['pp-plan', '3D plan', ''] : null, (L.features || []).length ? ['pp-features', 'Features', L.features.length] : null, ['pp-text', isReal(L) ? 'Listing text' : 'What stands out', '']].filter(Boolean);
+      const nav = [['pp-checks', 'Checks', nChecks], photos.length ? ['pp-photos', 'Photos', photos.length] : null, L.floorplan ? ['pp-plan', L.floorplan.has_3d === false ? 'Floor plan' : '3D plan', ''] : null, (L.features || []).length ? ['pp-features', 'Features', L.features.length] : null, ['pp-text', isReal(L) ? 'Listing text' : 'What stands out', '']].filter(Boolean);
       const words = Array.isArray(L.description) && L.description.length
-        ? `${L.headline ? `<p class="pp-hl">${esc(sentence(String(L.headline).toLowerCase().replace(/\s+/g, ' ')))}</p>` : ''}<div class="nt-acc pp-acc"><div class="fx-acc"><button type="button" class="fx-acc-q" aria-expanded="false">Full description<span class="fx-acc-pm" aria-hidden="true"></span></button><div class="fx-acc-body"><div class="fx-acc-a">${L.description.map((p) => `<p>${esc(p)}</p>`).join('')}</div></div></div></div><p class="pp-credit">From the listing on Domain${L.source.agency ? ', ' + esc(L.source.agency) : ''}.</p>`
-        : `<p class="pp-quote">${esc(sentence(L.special || 'A synthetic place for testing the checks.'))}</p><p class="pp-credit">A synthetic place on a fictional street.</p>`;
+        ? `${L.headline ? `<p class="pp-hl">${esc(sentence(String(L.headline).toLowerCase().replace(/\s+/g, ' ')))}</p>` : ''}<div class="nt-acc pp-acc"><div class="fx-acc"><button type="button" class="fx-acc-q" aria-expanded="false">Full description<span class="fx-acc-pm" aria-hidden="true"></span></button><div class="fx-acc-body"><div class="fx-acc-a">${L.description.map((p) => `<p>${esc(p)}</p>`).join('')}</div></div></div></div><p class="pp-credit">From the listing on ${esc(siteName(L))}${L.source.agency ? ', ' + esc(L.source.agency) : ''}.</p>`
+        : isReal(L)  // 没有正文的真房源：不拿合成房源的话术顶上。只有接口明说 card_only（只存了搜索结果卡片）才这么讲，否则只说没有正文
+          ? `${L.headline ? `<p class="pp-hl">${esc(sentence(String(L.headline).toLowerCase().replace(/\s+/g, ' ')))}</p>` : ''}<p class="pp-quote">${L.card_only === true ? 'Only the search-results card was saved for this place, so there is no description yet.' : 'This listing came without a description.'}</p><p class="pp-credit">From ${esc(siteName(L))}${L.source.agency ? ', ' + esc(L.source.agency) : ''}. Ask the agent for the full listing.</p>`
+          : `<p class="pp-quote">${esc(sentence(L.special || 'A synthetic place for testing the checks.'))}</p><p class="pp-credit">A synthetic place on a fictional street.</p>`;
       el.peek.innerHTML = `<div class="nt-peek-bar"><button type="button" class="nt-btn nt-btn-quiet nt-btn-xs" data-close aria-label="Close">${icon('close')}</button><span class="nt-crumbs"><span>${rec ? 'Your shortlist' : 'Explore'}</span><span>/</span><b>${esc(street)}</b></span></div>
         <div class="nt-peek-scroll" id="peek-scroll"><div class="pp">
-          ${tiles.length ? `<div class="pp-mosaic"><p class="pp-brand">${isReal(L) ? esc(L.source.agency || 'Domain') : 'Synthetic place · illustrative photo'}</p>
+          ${tiles.length ? `<div class="pp-mosaic"><p class="pp-brand">${isReal(L) ? esc(L.source.agency || siteName(L)) : 'Synthetic place · illustrative photo'}</p>
             <div class="pp-tiles n${tiles.length}">${tiles.map((p, i) => `<button type="button" class="pp-tile" data-lb="${i}"><img src="${esc(p.src)}" alt="${esc(p.caption)}"${i ? ' loading="lazy"' : ''}></button>`).join('')}
-              <div class="pp-tile-acts">${L.floorplan ? `<a class="pp-chip" href="#pp-plan" data-to="pp-plan">${icon('plan')}3D plan</a>` : ''}${photos.length > 1 ? `<a class="pp-chip" href="#pp-photos" data-to="pp-photos" title="All photos">${icon('photo')}${photos.length}</a>` : ''}</div></div></div>
+              <div class="pp-tile-acts">${L.floorplan ? `<a class="pp-chip" href="#pp-plan" data-to="pp-plan">${icon('plan')}${L.floorplan.has_3d === false ? 'Floor plan' : '3D plan'}</a>` : ''}${photos.length > 1 ? `<a class="pp-chip" href="#pp-photos" data-to="pp-photos" title="All photos">${icon('photo')}${photos.length}</a>` : ''}</div></div></div>
             <p class="pp-credit pp-credit-r">${esc(photoTag(L))}</p>` : ''}
           <header class="pp-head">
             <div>
@@ -603,7 +649,7 @@ window.HTUI = (() => {
               <p class="pp-sub">${esc(suburb)} ${esc(L.postcode || '')}</p>
               ${specRow(L, { cls: 'lg' })}
             </div>
-            <div class="pp-acts">${isReal(L) && L.source.url ? `<a class="nt-btn nt-btn-primary" href="${esc(L.source.url)}" target="_blank" rel="noopener">Listing on Domain ${icon('ext')}</a>` : ''}<a class="nt-btn nt-btn-secondary" href="#pp-checks" data-to="pp-checks">See the checks</a></div>
+            <div class="pp-acts">${isReal(L) && L.source.url ? `<a class="nt-btn nt-btn-primary" href="${esc(L.source.url)}" target="_blank" rel="noopener">Listing on ${esc(siteName(L))} ${icon('ext')}</a>` : ''}<a class="nt-btn nt-btn-secondary" href="#pp-checks" data-to="pp-checks">See the checks</a></div>
           </header>
           ${n ? `<div class="pp-verdict">${['supported', 'inferred', 'conflict', 'unknown'].map((s) => `<button type="button" class="pp-vcard ${s}${n[s] ? '' : ' zero'}" data-status="${s}"><b>${n[s]}</b><span class="tag status dot ${s}">${STATUS[s]}</span></button>`).join('')}</div>
             ${rec.qtext ? `<div class="pp-ask">${ASK}<div><p class="nt-eyebrow">Best question for the agent</p><p class="q">${esc(sentence(rec.qtext))}</p></div></div>` : ''}` : ''}
@@ -615,9 +661,9 @@ window.HTUI = (() => {
               <span class="pp-count" id="pp-count">${nChecks} checks${n ? '' : ' · not run against your needs yet'}</span></div>
             ${groups}<p class="pp-none" hidden>Nothing matches this filter.</p></section>
           ${photos.length ? `<section class="pp-sec" id="pp-photos"><h2 class="pp-h2">Photos</h2><div class="pp-photos">${photos.map((p, i) => `<figure><button type="button" data-lb="${i}"><img src="${esc(p.src)}" alt="${esc(p.caption)}" loading="lazy"></button><figcaption><b>${esc(p.caption)}</b>${p.condition ? `<span>${esc(sentence(p.condition))}</span>` : ''}</figcaption></figure>`).join('')}</div><p class="pp-credit">${esc(photoTag(L))}</p></section>` : ''}
-          ${L.floorplan ? `<section class="pp-sec" id="pp-plan"><h2 class="pp-h2">3D plan</h2><div class="nt-dh-slot" id="dh-slot"><div class="nt-dh-load">${icon('plan')}Raising the floor plan…</div></div><figure class="pp-plan"><button type="button" data-plan><img src="${esc(L.floorplan.url)}" alt="Floor plan" loading="lazy"></button><figcaption>The floor plan from the listing</figcaption></figure></section>` : ''}
+          ${L.floorplan ? `<section class="pp-sec" id="pp-plan"><h2 class="pp-h2">${L.floorplan.has_3d === false ? 'Floor plan' : '3D plan'}</h2>${L.floorplan.has_3d === false ? '' : `<div class="nt-dh-slot" id="dh-slot"><div class="nt-dh-load">${icon('plan')}Raising the floor plan…</div></div>`}<figure class="pp-plan"><button type="button" data-plan><img src="${esc(L.floorplan.url)}" alt="Floor plan" loading="lazy"></button><figcaption>The floor plan from the listing</figcaption></figure></section>` : ''}
           ${(L.features || []).length ? `<section class="pp-sec" id="pp-features"><h2 class="pp-h2">Features</h2><div class="pp-feats">${L.features.map((f) => `<div class="pp-feat"><span class="ck">${TICK}</span>${esc(f)}</div>`).join('')}</div></section>` : ''}
-          <section class="pp-sec" id="pp-text"><h2 class="pp-h2">${isReal(L) ? 'In the listing’s words' : 'What stands out'}</h2>${words}</section>
+          <section class="pp-sec" id="pp-text"><h2 class="pp-h2">${isReal(L) ? (Array.isArray(L.description) && L.description.length ? 'In the listing’s words' : 'Listing text') : 'What stands out'}</h2>${words}</section>
         </div></div>`;
       const scroller = $('#peek-scroll', el.peek);
       el.peek.querySelector('[data-close]').onclick = () => el.peek.close();
@@ -650,7 +696,7 @@ window.HTUI = (() => {
       $$('[data-to]', el.peek).forEach((a) => { if (!navEl.contains(a)) a.addEventListener('click', (e) => { e.preventDefault(); go(a.dataset.to); }); });
       fx.accordion(el.peek);
       fx.reveal($$('.pp-card, .pp-vcard, .pp-photos figure', el.peek));
-      if (L.floorplan) mountDollhouse(L, $('#dh-slot', el.peek), scroller);
+      if (L.floorplan && L.floorplan.has_3d !== false) mountDollhouse(L, $('#dh-slot', el.peek), scroller);  // 10-27：没分过房间的户型图只给原图，不挂玩偶屋
     }
     el.peek.addEventListener('close', () => { if (dollhouse) { try { dollhouse.destroy(); } catch (e) {} dollhouse = null; } });
     function mountDollhouse(L, slot, scroller) {

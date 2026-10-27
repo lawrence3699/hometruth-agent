@@ -714,7 +714,14 @@ def evaluate(L: dict, profile: dict, overrides: Dict[str, dict]) -> Dict[str, di
         else:
             ok = row["min"] <= profile.get("max_commute", 40)
             cells["G1"] = _cell("G1", "supported" if ok else "conflict", row, evidence=[ev])
-    if profile["move_in"]:
+    if profile["move_in"] and not L.get("available_from"):
+        # 真房源的搜索卡片没有可入住日（scripts/domain_sample.py 记成 None）：硬条件未知 = 待确认，不算满足、也不排除（CLAUDE.md 第 4 节）；
+        # 中介回复了入住日（replies.py 落到 A4 的覆盖）就照回复的状态，不再是 no date
+        f = overrides.get("A4") or facts.get("A4") or {}
+        st = (f.get("status") or "unknown") if overrides.get("A4") else "unknown"
+        cells["A4"] = _cell("A4", st, None, why=f.get("why") or "The listing gives no move-in date; ask the agent.", evidence=f.get("evidence"),
+                            short="no date" if st == "unknown" else "per agent")
+    elif profile["move_in"]:
         avail = dt.date.fromisoformat(L["available_from"])
         target = _target_date(profile["move_in"])
         if target is None:
@@ -796,6 +803,12 @@ def zetaris_rows(source: str) -> Optional[List[dict]]:
     return out
 
 
+def _has_plan3d(url: Optional[str]) -> bool:
+    """户型图 /real/<文件夹>/prep/NN.jpg → data/real/photos/<文件夹>/plan3d.json 在不在（src/photo/plan3d.py build 生成，进仓库）。"""
+    m = re.match(r"/real/([^/]+)/", url or "")
+    return bool(m) and (ROOT / "data" / "real" / "photos" / m.group(1) / "plan3d.json").exists()
+
+
 def listing_summary(L: dict) -> dict:
     """/api/listings 用（卡片墙、浏览网格、详情页）：只读摘要。字段和 card 事件的 listing 一致（没有 rank / cells），另加 suburb、
     postcode、special，以及 facts：每个维度在矩阵里登记的事实（固定状态 + 证据的表 / 行 / 原文）——详情页"What the sources say"就是它。
@@ -816,9 +829,13 @@ def listing_summary(L: dict) -> dict:
     if L.get("photo"):  # 看图模型读过的那张照片：卡片、轨道、详情页都用它（有盖章的就是盖章版），而不是按顺序轮配的示意图
         p = L["photo"]
         out.update(image=p["url"], photo_set=p.get("set"), photo_caption=p.get("caption"), photo_stamp=p.get("stamp"), photo_read_by=p.get("read_by"))
+    if (L.get("source") or {}).get("card_only"):  # 10-27：只存了搜索结果卡片的真房源（没有正文）；页面据此说"只有卡片"而不是"挂牌没写"
+        out["card_only"] = True
     for k in ("source", "images", "floorplan", "sun", "description", "headline", "lat", "lng", "parking"):  # 真房源（scripts/domain_sample.py）：相册、户型图、日照几何、出处
         if L.get(k) is not None:
             out[k] = L[k]
+    if out.get("floorplan"):  # 10-27：46 套卡片房源也认出了户型图，但分房间的玩偶屋（plan3d.json）只有做过的几套有；页面据此写 "3D plan" 还是 "Floor plan"
+        out["floorplan"] = dict(out["floorplan"], has_3d=_has_plan3d(out["floorplan"].get("url")))
     if L.get("features") is not None:  # 10-27：挂牌自己的设施清单（真房源，scripts/real_features.py 从 data/real/domain 抄进矩阵；空数组也带上），详情页 Features 网格
         out["features"] = list(L["features"])
     if L.get("commute"):  # 10-27：通勤表（到 Central / UNSW / CBD 几分钟、什么方式、是否估算），详情页 "HomeTruth says" 那格；和 G1 用的是同一张表
@@ -846,7 +863,8 @@ def card_payload(L: dict, cells: Dict[str, dict], rank_no: int) -> dict:
             if c.get("next"):
                 row["next"] = c["next"]["kind"]  # 下一步只给 kind（ask_agent / see_at_viewing / check_at_signing）；全文在 evidence 的格子里
             out.append(row)
-    payload = {"id": L["id"], "rank": rank_no, "title": f"{L['unit']}/{L['street']}, {L['suburb']}", "rent": L["rent"], "bedrooms": L["bedrooms"],
+    # 10-27：独立屋 / 没单元号的卡片不再显示 "/12 X Street"
+    payload = {"id": L["id"], "rank": rank_no, "title": (f"{L['unit']}/" if L.get("unit") else "") + f"{L['street']}, {L['suburb']}", "rent": L["rent"], "bedrooms": L["bedrooms"],
                "bathrooms": L["bathrooms"], "available_from": L["available_from"], "cells": out}
     if L.get("photo"):
         payload["image"] = L["photo"]["url"]

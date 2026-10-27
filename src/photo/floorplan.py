@@ -190,18 +190,21 @@ def k1_fact(listing: dict, floor: Optional[int], floor_how: str) -> dict:
     lid = listing["id"]
     n = facts.num_of(lid)
     unit = str(listing.get("unit") or "")
-    digits = unit + (str(floor) if floor is not None else "")
+    number = (re.match(r"\s*(\d+[A-Za-z]?(?:-\d+[A-Za-z]?)?)", str(listing.get("street") or "")) or [None, ""])[1] if not unit else ""  # 10-27：没单元号（独立屋 / 卡片）就看门牌号
+    digits = (unit or number) + (str(floor) if floor is not None else "")
     has4 = "4" in digits
     where = []
     if "4" in unit:
         where.append(f"unit {unit}")
+    if "4" in number:
+        where.append(f"number {number}")
     if floor is not None and "4" in str(floor):
         where.append(f"level {floor}")
-    text = f"Address: {listing['unit']}/{listing['street']}" + (f"; level {floor} ({floor_how})" if floor is not None else "; floor not stated")
+    text = "Address: " + (f"{unit}/" if unit else "") + f"{listing['street']}" + (f"; level {floor} ({floor_how})" if floor is not None else "; floor not stated")
     ev = [{"table": "listings", "row": lid, "material_id": f"M-{n}-listing", "text": text}]
     status = "supported" if floor_how in ("listing text", "unknown") or floor is None else "inferred"
     if has4:
         return {"status": status, "value": "Has a 4", "short": "has a 4", "flag": True, "if_wanted": "conflict",
                 "why": f"The number includes a 4 ({' and '.join(where)})." + (" The level is worked out from the unit number, so inferred." if floor_how == "unit number" else ""), "evidence": ev}
     return {"status": status, "value": "No 4", "short": "no 4", "flag": False, "if_wanted": status,
-            "why": f"Unit {unit}" + (f", level {floor}" if floor is not None else "") + ": no 4 in the numbers." + (" Floor not stated, so only the unit number is checked." if floor is None else ""), "evidence": ev}
+            "why": (f"Unit {unit}" if unit else f"Number {number or '?'}") + (f", level {floor}" if floor is not None else "") + ": no 4 in the numbers." + (" Floor not stated, so only the unit number is checked." if floor is None else ""), "evidence": ev}

@@ -81,7 +81,7 @@ class MatrixRows(unittest.TestCase):
         self.assertEqual(by_id["L-0002"]["C2"]["evidence"][0]["table"], "photo_facts")
         staged = {L["id"] for L in policy.LISTINGS if (L["facts"].get("C2") or {}).get("notable")}
         self.assertEqual({lid for lid, cells in by_id.items() if "C2" in cells}, staged & set(by_id), "exactly the stamped ones light up unasked")
-        self.assertTrue(all(lid == "L-0002" for lid in staged if not lid.startswith("L-D")), "of the synthetic five only L-0002 is stamped")
+        self.assertTrue(all(lid == "L-0002" for lid in staged if lid.startswith("L-0")), "of the synthetic five only L-0002 is stamped")  # 真房源 L-D* / L-R*（10-27 起有 REA）可以有虚拟家具
 
     def test_asking_for_furniture_turns_the_staged_row_into_a_conflict(self):
         ranked, _ = policy.rank(profile(extras=[{"dim": "C2", "label": "Furnished"}]), {})

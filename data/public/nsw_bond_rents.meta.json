@@ -1,0 +1,210 @@
+{
+ "dataset": "NSW Fair Trading residential rental bond lodgements (monthly files)",
+ "what": "New residential tenancies whose bond was lodged with NSW Fair Trading; weekly rent, dwelling type and bedrooms as given by the agent or landlord at lodgement.",
+ "source_page": "https://www.fairtrading.nsw.gov.au/about-fair-trading/rental-bond-data",
+ "source_page_resolved": "https://www.nsw.gov.au/housing-and-construction/rental-forms-surveys-and-data/rental-bond-data",
+ "licence": {
+  "name": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+  "url": "https://creativecommons.org/licenses/by/4.0/",
+  "data_nsw_dataset": "https://data.nsw.gov.au/data/dataset/rental-bond-lodgement",
+  "data_nsw_licence_field": "Creative Commons Attribution (cc-by), publisher: Fair Trading",
+  "nsw_copyright_page": "https://www.nsw.gov.au/nsw-government/about-website/copyright",
+  "nsw_copyright_statement": "All material on this website is licensed under the Creative Commons Attribution 4.0 licence, except as noted below.",
+  "stated_attribution_form": "© State of New South Wales. For current information go to www.nsw.gov.au.",
+  "attribution": "Contains NSW Fair Trading rental bond lodgement data, © State of New South Wales, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Aggregated by HomeTruth into medians and quartiles by postcode, dwelling type and bedrooms; not endorsed by NSW Fair Trading.",
+  "checked": "2026-10-27"
+ },
+ "months": "Apr–Sep 2026",
+ "first_month": "2026-04",
+ "last_month": "2026-09",
+ "files": [
+  {
+   "month": "2026-04",
+   "title": "Rental bond lodgement data - April 2026",
+   "url": "https://www.nsw.gov.au/sites/default/files/noindex/2026-05/rentalbond_lodgements_april_2026.xlsx",
+   "file": "rentalbond_lodgements_april_2026.xlsx",
+   "bytes": 610154,
+   "sha256": "0eab38ff984da8fa053ab6b97ba267d223ee0f43d68ebe1630e29875f8fb5096",
+   "sheet": "Apr26 Rental Bond Lodgments",
+   "header_row": 3,
+   "rows_read": 22497,
+   "rows_kept": 21122,
+   "lodgement_months": {
+    "2026-04": 21122
+   },
+   "skipped": {
+    "bedrooms U, blank or not a number": 89,
+    "dwelling O": 727,
+    "dwelling U": 510,
+    "dwelling code not in legend": 2,
+    "rent <= 0 or > 20000": 1,
+    "rent U, blank or not a number": 46
+   }
+  },
+  {
+   "month": "2026-05",
+   "title": "Rental bond lodgement data - May 2026",
+   "url": "https://www.nsw.gov.au/sites/default/files/noindex/2026-06/rentalbond_lodgements_may_2026.xlsx",
+   "file": "rentalbond_lodgements_may_2026.xlsx",
+   "bytes": 662423,
+   "sha256": "9a2bfa2ae7a85ee0103c4df269f770f4a6a9cd57c28dc6ec6b93207b8f09e09e",
+   "sheet": "May26 Rental Bond Lodgments",
+   "header_row": 3,
+   "rows_read": 24479,
+   "rows_kept": 23010,
+   "lodgement_months": {
+    "2026-05": 23010
+   },
+   "skipped": {
+    "bedrooms U, blank or not a number": 43,
+    "dwelling O": 793,
+    "dwelling U": 596,
+    "dwelling code not in legend": 3,
+    "rent U, blank or not a number": 34
+   }
+  },
+  {
+   "month": "2026-06",
+   "title": "Rental bond lodgement data - June 2026",
+   "url": "https://www.nsw.gov.au/sites/default/files/noindex/2026-07/rentalbond_lodgements_june_2026.xlsx",
+   "file": "rentalbond_lodgements_june_2026.xlsx",
+   "bytes": 691689,
+   "sha256": "906651c8118171aeca5402bf46cc9b4c9000ef5be93f67dfd959d929f59377fb",
+   "sheet": "June26 Rental Bond Lodgments",
+   "header_row": 3,
+   "rows_read": 25492,
+   "rows_kept": 23599,
+   "lodgement_months": {
+    "2026-06": 23599
+   },
+   "skipped": {
+    "bedrooms U, blank or not a number": 48,
+    "dwelling O": 732,
+    "dwelling U": 1087,
+    "dwelling code not in legend": 6,
+    "rent U, blank or not a number": 20
+   }
+  },
+  {
+   "month": "2026-07",
+   "title": "Rental bond lodgement data - July 2026",
+   "url": "https://www.nsw.gov.au/sites/default/files/noindex/2026-08/rentalbond_lodgements_july_2026.xlsx",
+   "file": "rentalbond_lodgements_july_2026.xlsx",
+   "bytes": 754682,
+   "sha256": "3933452823762c0fea75b1747c5c2a526022d2bafd8713006867a74d91288452",
+   "sheet": "July26 Rental Bond Lodgments",
+   "header_row": 3,
+   "rows_read": 28103,
+   "rows_kept": 26356,
+   "lodgement_months": {
+    "2026-07": 26356
+   },
+   "skipped": {
+    "bedrooms U, blank or not a number": 63,
+    "dwelling O": 725,
+    "dwelling U": 939,
+    "dwelling code not in legend": 2,
+    "rent <= 0 or > 20000": 1,
+    "rent U, blank or not a number": 17
+   }
+  },
+  {
+   "month": "2026-08",
+   "title": "Rental bond lodgement data - August 2026",
+   "url": "https://www.nsw.gov.au/sites/default/files/noindex/2026-09/rentalbond_lodgements_august_2026.xlsx",
+   "file": "rentalbond_lodgements_august_2026.xlsx",
+   "bytes": 737307,
+   "sha256": "db2b6a293479e886e2bbf0c17fee99f12dc98daf6e509c57975d53a796593d06",
+   "sheet": "August26 Rental Bond Lodgments",
+   "header_row": 3,
+   "rows_read": 27604,
+   "rows_kept": 24252,
+   "lodgement_months": {
+    "2026-08": 24252
+   },
+   "skipped": {
+    "bedrooms U, blank or not a number": 31,
+    "dwelling O": 2081,
+    "dwelling U": 1203,
+    "dwelling code not in legend": 6,
+    "rent <= 0 or > 20000": 15,
+    "rent U, blank or not a number": 16
+   }
+  },
+  {
+   "month": "2026-09",
+   "title": "Rental bond lodgement data - September 2026",
+   "url": "https://www.nsw.gov.au/sites/default/files/noindex/2026-10/rentalbond_lodgements_september_2026.xlsx",
+   "file": "rentalbond_lodgements_september_2026.xlsx",
+   "bytes": 715284,
+   "sha256": "7e0f4525315d0edab40f64398aa3035e4bf8f203b02eb5e22e25083a313248c3",
+   "sheet": "Sept26 Rental Bond Lodgments",
+   "header_row": 3,
+   "rows_read": 26612,
+   "rows_kept": 24938,
+   "lodgement_months": {
+    "2026-09": 24938
+   },
+   "skipped": {
+    "bedrooms U, blank or not a number": 53,
+    "dwelling O": 1156,
+    "dwelling U": 445,
+    "dwelling code not in legend": 1,
+    "rent <= 0 or > 20000": 1,
+    "rent U, blank or not a number": 18
+   }
+  }
+ ],
+ "rows": {
+  "read": 154787,
+  "kept": 143277,
+  "skipped": {
+   "bedrooms U, blank or not a number": 327,
+   "dwelling O": 6214,
+   "dwelling U": 4780,
+   "dwelling code not in legend": 20,
+   "rent <= 0 or > 20000": 18,
+   "rent U, blank or not a number": 151
+  },
+  "csv_rows": 4788,
+  "csv_rows_n_ge_10": 2187,
+  "postcodes": 581
+ },
+ "legend": {
+  "columns": {
+   "lodgement date": "Date that the bond was lodged with Fair Trading. For bonds lodged using Rental Bonds Online, this is the date that the agent or landlord completed the lodgement process",
+   "postcode": "Postcode of the rented premises address",
+   "dwelling type": "Type of rented premises as provided by the agent of landlord. (F) Flat/unit; (H) House; (T) Terrace/townhouse/semi-detached; (O) Other; (U) Unknown. A Dwelling Type of ‘Other’ may include rented rooms, garages and car spaces.",
+   "bedrooms": "Number of bedrooms as provided by the agent or landlord; (U) unknown. A value of ‘0’ bedrooms may indicate a bedsitter or studio apartment, or rented premises such as a garage or car space.",
+   "weekly rent": "Weekly rent amount as provided by the agent or landlord; (U) unknown"
+  },
+  "dwelling_codes": {
+   "F": "Flat/unit",
+   "H": "House",
+   "T": "Terrace/townhouse/semi-detached",
+   "O": "Other",
+   "U": "Unknown"
+  }
+ },
+ "filters": [
+  "Dwelling type kept: F (flat/unit), H (house), T (terrace/townhouse/semi-detached). Dropped: O (other: rented rooms, garages, car spaces per the legend), U (unknown), blank and codes not in the legend.",
+  "Bedrooms: U, blank or non-numeric dropped; 0 kept (studio or bedsitter per the legend); 4 or more pooled as 4.",
+  "Weekly rent: U, blank, non-numeric, <= 0 or > 20000 dropped.",
+  "Postcode: must be a whole number 0200-9999.",
+  "Lodgement month comes from the lodgement date (Excel serial); if unreadable, the month in the file title."
+ ],
+ "columns": {
+  "postcode": "4-digit postcode of the rented premises",
+  "dwelling": "F, H or T",
+  "beds": "0-3, or 4 meaning 4 or more",
+  "n": "lodgements in the window",
+  "median": "median weekly rent, AUD, rounded half up",
+  "q1": "25th percentile (statistics.quantiles inclusive = Excel QUARTILE.INC), rounded",
+  "q3": "75th percentile, same method",
+  "first_month": "earliest lodgement month in this cell (YYYY-MM)",
+  "last_month": "latest lodgement month in this cell"
+ },
+ "lookup_min_n": 10,
+ "generated_by": "scripts/nsw_bonds.py",
+ "generated_at": "2026-10-27T03:51:59+00:00"
+}

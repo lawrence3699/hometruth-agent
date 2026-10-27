@@ -317,7 +317,7 @@ window.HTUI = (() => {
         + `<button type="button" class="save-home${isSaved ? ' is-saved' : ''}" data-save-id="${esc(L.id)}" aria-pressed="${isSaved}" aria-label="${isSaved ? 'Remove' : 'Save'} ${esc(addr)}">${qsvgHTML('heart')}</button></div>`
         + `<div class="result-info"><div class="result-title-row"><div class="ht-title"><div class="suburb">${esc(sub)}</div><h3 class="addr">${esc(addr)}</h3></div>`
         + `<p class="result-price"><b>$${esc(L.rent)}</b><span>per week</span></p></div>`
-        + `<div class="result-meta specs-row"><span>${icon('q-bed', 'qico')}${esc(bedText(L.bedrooms))}</span><span>${icon('q-bath', 'qico')}${esc(L.bathrooms)} bath</span><span>${icon('cal')}Available ${esc(fmtDate(L.available_from))}</span></div>`
+        + `<div class="result-meta specs-row"><span>${icon('q-bed', 'qico')}${esc(bedText(L.bedrooms))}</span>${L.bathrooms != null ? `<span>${icon('q-bath', 'qico')}${esc(L.bathrooms)} bath</span>` : ''}<span>${icon('cal')}${L.available_from ? `Available ${esc(fmtDate(L.available_from))}` : 'Move-in date not given'}</span></div>`
         + `<ul class="result-reasons rows">${rowsHTML(rec)}</ul>`
         + `<div class="result-actions"><span class="ht-summary">${summaryHTML(L)}</span><span class="moved${mv ? ' ' + mv.dir : ''}">${mv ? esc(mv.text) : ''}</span>`
         + `<span class="ht-actions"><button type="button" class="result-compare" data-compare-id="${esc(L.id)}" aria-pressed="${cmp}">${cmp ? 'Selected for compare' : 'Compare'}</button>`

@@ -200,9 +200,15 @@ def cell_sentence(dim: str, c: dict, L: dict, profile: dict) -> str:
     if dim == "A1":
         med = c.get("median") or {}
         tail = ""
-        if med.get("rent"):  # 真房源：Domain 的本区中位租金（广告说 vs 来源说）
+        if med.get("rent"):  # 真房源：Domain 的本区中位租金，或（10-27 起，没有 Domain 中位数时）NSW Fair Trading 押金登记里这个邮编同类房的新租约中位数
             pct = med.get("pct") or 0
-            tail = f" That's {'about the' if abs(pct) < 2 else f'{abs(pct)} percent ' + ('above' if pct > 0 else 'below')} {med['suburb']}'s median of {med['rent']} for {med.get('beds') or 2} bedrooms."
+            rel = 'about the' if abs(pct) < 2 else f'{abs(pct)} percent ' + ('above' if pct > 0 else 'below')
+            beds = med.get("beds") if med.get("beds") is not None else 2
+            if med.get("source") == "nsw-bonds":
+                kind = "studio" if beds == 0 else f"{beds}-bedroom"
+                tail = f" That's {rel} the median of {med['rent']} for new {kind} leases in postcode {L.get('postcode') or ''}, from NSW Fair Trading bond records."
+            else:
+                tail = f" That's {rel} {med['suburb']}'s median of {med['rent']} for {beds} bedroom{'' if beds == 1 else 's'}."
         if st == "supported":
             return f"Rent is {L['rent']} a week, inside your {profile['budget']} budget.{tail}"
         return f"Rent is {L['rent']} a week, over your {profile['budget']} budget.{tail}"
@@ -220,6 +226,8 @@ def cell_sentence(dim: str, c: dict, L: dict, profile: dict) -> str:
             return f"About {v['min']} minutes to {profile['anchor']} by {v['mode']}, estimated from the distance, not a timetable, so I can only infer."
         return f"{v['min']} minutes to {profile['anchor']}, over your {profile.get('max_commute', 40)} minute limit" + (", and that's only an estimate from the distance." if v.get("estimate") else ".")
     if dim == "A4":
+        if st == "unknown":  # 搜索卡片没有可入住日（scripts/domain_sample.py 记成 None）：硬条件待确认，不是冲突，也没有日期可念
+            return f"Move-in date: unknown. {c.get('why', '')}".strip()
         if st == "supported":
             return f"Available from {c['value']}, which works for {profile['move_in']['text']}."
         return f"Available from {c['value']}, about {c.get('gap_days', 0)} days after {profile['move_in']['text']}, so that's a conflict unless the date moves."
@@ -256,6 +264,8 @@ BEST_Q = {
 def best_question(dim: str, c: dict, profile: dict) -> str:
     if dim == "G1" and c.get("estimate"):  # 真房源：通勤是直线距离估的，该查的是真实时刻表
         return f"Best thing to check with the agent: what's the real door-to-door time to {profile.get('anchor') or 'your anchor'}? Mine is only an estimate from the distance."
+    if dim == "A4" and c.get("status") == "unknown":  # 没有日期时问最早哪天能入住，不问"能不能提前"
+        return "Best question for this agent: what's the earliest move-in date?"
     t = BEST_Q.get(dim, "Best question for this agent: can you confirm that in writing?")
     return t.format(status=c["status"], anchor=profile.get("anchor") or "your anchor")
 

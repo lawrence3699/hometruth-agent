@@ -24,6 +24,9 @@ data/materials/*
 data/truth/*
 data/labels/*
 data/real/domain/*
+# 10-27：用户存的搜索结果页导出的卡片（realestate.com.au 一侧）和地址→坐标缓存，同样是原始抓取，只在本机
+data/real/rea/*
+data/real/geocode_cache.json
 # 真房源照片：公网要用的 prep/*.jpg 进仓库（超亮 10-27 定，私有仓库，约 7.7 MB）；Domain 原图 webp 不进（scripts/domain_sample.py fetch 能重下）
 data/real/photos/**/*.webp
 data/real/photos/**/*.png

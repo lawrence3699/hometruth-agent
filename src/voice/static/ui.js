@@ -111,7 +111,7 @@ window.HTUI = (() => {
     const cardHTML = (L) => {
       const [addr, sub] = splitTitle(L);
       return `<div class="wcard" data-id="${esc(L.id)}"><span class="w-sub">${esc(sub)}</span><span class="w-addr">${esc(addr)}</span>`
-        + `<span class="w-rent"><b>$${esc(L.rent)}</b> per week</span><span class="w-meta">${esc(bedText(L.bedrooms))} · ${esc(L.bathrooms)} bath · from ${esc(fmtDate(L.available_from))}</span></div>`;
+        + `<span class="w-rent"><b>$${esc(L.rent)}</b> per week</span><span class="w-meta">${esc(bedText(L.bedrooms))}${L.bathrooms != null ? ` · ${esc(L.bathrooms)} bath` : ''} · ${L.available_from ? `from ${esc(fmtDate(L.available_from))}` : 'move-in date not given'}</span></div>`;
     };
     function build() {
       anims.forEach((a) => a.cancel()); anims = []; lanesEl.textContent = '';
@@ -257,7 +257,7 @@ window.HTUI = (() => {
       return `<header class="fg-head"><div class="fg-top"><span class="now">Now discussing</span><span class="rank">#${esc(rec.rank)}</span></div>`
         + `<div class="suburb">${esc(sub)}</div><h3 class="addr">${esc(addr)}</h3>`
         + `<div class="rent"><b>$${esc(L.rent)}</b><span>per week</span></div>`
-        + `<div class="meta">${esc(bedText(L.bedrooms))} · ${esc(L.bathrooms)} bath · Available ${esc(fmtDate(L.available_from))}</div>`
+        + `<div class="meta">${esc(bedText(L.bedrooms))}${L.bathrooms != null ? ` · ${esc(L.bathrooms)} bath` : ''} · ${L.available_from ? `Available ${esc(fmtDate(L.available_from))}` : 'Move-in date not given'}</div>`
         + `<div class="moved${mv ? ' ' + mv.dir : ''}">${mv ? esc(mv.text) : ''}</div></header>`
         + `<ul class="rows">${rowsHTML(rec)}</ul><footer class="fg-foot">${summaryHTML(L)}</footer>`;
     }

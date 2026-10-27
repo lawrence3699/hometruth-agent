@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import gzip
 import json
 from typing import Optional
 import mimetypes
@@ -46,6 +47,27 @@ from policy import SOURCES, zetaris_rows  # noqa: E402
 from photo import style as style_match  # noqa: E402  装修风格匹配（软偏好；policy 已把 src 放进 sys.path）
 
 LOG = ROOT / "runs" / "voice_log.jsonl"
+GZIP_MIN = 8 * 1024  # JSON 回复超过这么大、浏览器又说收 gzip 才压（_json）
+
+
+def accepts_gzip(header: Optional[str]) -> bool:
+    """Accept-Encoding 里 gzip（或 *）的 q 值 > 0 才算收 gzip：`gzip;q=0` 是明说不要；gzip 没点名时看 `*`。"""
+    q_gzip = q_star = None
+    for part in (header or "").lower().split(","):
+        bits = [b.strip() for b in part.split(";")]
+        name, q = bits[0], 1.0
+        for b in bits[1:]:
+            if b.startswith("q="):
+                try:
+                    q = float(b[2:])
+                except ValueError:
+                    q = 0.0
+        if name in ("gzip", "x-gzip"):
+            q_gzip = q if q_gzip is None else max(q_gzip, q)
+        elif name == "*":
+            q_star = q
+    q = q_gzip if q_gzip is not None else q_star
+    return bool(q and q > 0)
 
 
 def listings_view() -> list:
@@ -80,17 +102,24 @@ class Handler(BaseHTTPRequestHandler):
         if os.environ.get("VOICE_DEBUG"):
             super().log_message(fmt, *args)
 
-    def _send(self, code: int, body: bytes, ctype: str = "application/json", cache: str = "no-store") -> None:
+    def _send(self, code: int, body: bytes, ctype: str = "application/json", cache: str = "no-store", headers: Optional[dict] = None) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", cache)
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         if body:
             self.wfile.write(body)
 
-    def _json(self, code: int, obj) -> None:
-        self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+    def _json(self, code: int, obj, compress: bool = True) -> None:
+        body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        if compress and len(body) >= GZIP_MIN and accepts_gzip(self.headers.get("Accept-Encoding")):
+            # 10-27：150 套房时 /api/listings 约 2.2 MB（每套的 facts + sun 证据），gzip 5 级压到约 160 KB、本机多花约 15 ms；
+            # 小的 JSON 不压。源站先压好，经 cloudflared 隧道出校园网的就是压过的字节（少传约 90%）。
+            return self._send(code, gzip.compress(body, compresslevel=5), headers={"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
+        self._send(code, body)
 
     def _file(self, p: Path) -> None:
         if not p.is_file():
@@ -134,7 +163,8 @@ class Handler(BaseHTTPRequestHandler):
             rows = zetaris_rows(name)
             if rows is None:
                 return self._json(404, {"error": f"unknown source {name!r}", "sources": [s["name"] for s in SOURCES]})
-            return self._json(200, {"source": name, "count": len(rows), "items": rows})
+            # 不压：Zetaris 的 REST 连接器经 Cloudflare 来取，这条赛事硬要求的链路保持和以前一样的原始字节
+            return self._json(200, {"source": name, "count": len(rows), "items": rows}, compress=False)
         if u.path == "/api/tts":
             q = urllib.parse.parse_qs(u.query)
             text = (q.get("text") or [""])[0].strip()
