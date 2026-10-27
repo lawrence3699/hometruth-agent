@@ -274,7 +274,7 @@ window.HTUI = (() => {
     <div><h6>Product</h6><ul><li><a href="#workspace">Find a place</a></li><li><a href="#how">How it checks</a></li><li><a href="#explore">Explore</a></li><li><a href="#faq">Questions</a></li></ul></div>
     <div><h6>Materials</h6><ul><li>Listing pages</li><li>Floor plans and photos</li><li>Agent replies and by-laws</li><li>Rent medians and transit times</li></ul></div>
     <div><h6>Prototype</h6><ul><li><a href="/">Current design</a></li><li><a href="/classic">Classic page</a></li><li>Open Agent Hackathon 2026</li></ul></div>
-    <div><h6>Built with</h6><ul><li>Zetaris</li><li>Meterless</li><li>NVIDIA Nemotron</li><li>Cursor</li></ul></div>
+    <div><h6>Built with</h6><ul><li>Zetaris</li><li>Meterless</li><li>NVIDIA Nemotron</li></ul></div>
   </div>
   <div class="nt-foot-bottom"><span>© 2026 HomeTruth prototype · Open Agent Hackathon</span><span>Real listing photos © their agencies · illustrative photos from resident.co.nz</span><span>Layout after notion.com · motion after Lucian UX/UI Prompt (MIT)</span></div>
 </footer>
