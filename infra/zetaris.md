@@ -1,6 +1,6 @@
 # Zetaris：实例、凭据、怎么用、实测记录
 
-更新：2026-10-25 04:07 AEDT。实例由队友创建；本机已跑通"注册一张 S3 CSV 小表 + 查询"。本文件不放 key。
+更新：2026-10-27 14:05 AEDT。证据已真走 Zetaris（REST 表指向我们自己的网站，见实测记录第一节）。实例由队友创建。本文件不放 key。
 
 ## 实例是什么
 
@@ -27,6 +27,28 @@ python3 scripts/zetaris_sql.py --limit 5 --json "SELECT * FROM hometruth_smoke.w
 
 ## 实测记录
 
+### 2026-10-27 14:05 AEDT：证据真走 Zetaris（REST 表，不用桶）——赛事要求的集成做完了
+
+人话版：以前页面上每条证据旁边写着 mock，来源面板的查询编号是编的。现在每次开查，服务器给 Zetaris 发 7 条真 SQL（每个来源一条，只查这次的候选房），Zetaris 去我们自己的网站上把那张表取回来、按条件筛好再交回；页面上每条证据写着是哪一条 Zetaris 查询返回的，鼠标悬停能看到完整编号、时间和 SQL。
+
+怎么接的（不需要 S3 桶和 AWS 密钥）：
+
+1. 我们的服务器把每个来源的证据公开成 JSON：`https://hometruth.codeprism.tech/api/zetaris/<来源>`（7 个来源：listings、photo_facts、documents、public_rent、public_transit、sun_geometry、floorplan_facts），格式 `{source, count, items: [{evidence_id, listing_id, dim, source_table, row_ref, material_id, fact}]}`，由 `policy.zetaris_rows` 从核对用的同一批证据生成，`evidence_id` 是证据内容的哈希，两边对得上。
+2. `scripts/zetaris/10_register_hometruth.sql`（已执行）：建 Lightning 库 `HOMETRUTH_SRC`，7 张 REST 表 `<来源>_raw` 指向上面的地址（带 `user-agent "HomeTruth-client/1 zetaris"`，否则 Cloudflare 拦），再建 SchemaStore 容器 `hometruth` 和 7 个视图 `hometruth.<来源>`（`LATERAL VIEW explode(items)` 拍平）。REST 表每次查询都重新取我们的接口，所以数据一直留在我们这边，Zetaris 是在原地查。
+3. `src/voice/zetaris_live.py`：开查时 7 条 `SELECT evidence_id, listing_id, dim, fact FROM hometruth.<来源> WHERE listing_id IN (候选房)` 并行发出，9 s 内谁先答谁先亮；返回的每个 evidence_id 记下是哪条查询（X-Request-ID = 查询编号，因为接口不回 queryId）。超时的来源用它上一次成功的查询（页面标 earlier），从没查成过的标 failed、证据标 local copy。中介中途发来的回复标 agent reply。每条查询记到 runs/zetaris_log.jsonl。
+4. 开关：两台服务启动时 `.env` 里有 `ZETARIS_*` 就开（`HOMETRUTH_ZETARIS=0` 关）；启动 6 s 后预热一轮。单测不联网（tests/test_zetaris_live.py 用假接口）。`/api/hello` 的 `zetaris` 字段看开没开、查了几次、成功几次、最近的错误。
+
+实测：
+
+| 项 | 结果 |
+|---|---|
+| 7 张 REST 表注册 | 每张 0.4 到 0.9 s |
+| 7 个视图的行数（`11_query_hometruth.sql`） | 132 / 69 / 22 / 9 / 42 / 4 / 4，和我们接口上的一模一样；单条 0.5 到 1.9 s |
+| 公网一次开查（盒子上，7 条并行） | 每条 1.4 到 2.5 s，开口后约 3 s 七行全亮；21 条证据 21 条 via Zetaris，0 条 local |
+| 页面 | 来源栏写 “7/7 · via Zetaris”、每行真实行数和耗时；证据行写 “Zetaris query a906b00b”，悬停看 SQL |
+
+注意：服务重启后的预热如果早于表注册会失败（10-27 第一次就是），`/api/hello` 里 failed 会多 7 次、last_error 是 TABLE_OR_VIEW_NOT_FOUND，之后的开查正常。改了 `/api/zetaris` 的字段要重跑 19 再跑 10（视图列是建时定的）。10-25 的 probe 库 HOMETRUTH_PROBE 已删。
+
 ### 2026-10-25 04:07 AEDT：注册 + 查询跑通（S3 CSV 路）
 
 目的：在拿到我们自己的桶之前，先证明"S3 桶里的 CSV → Zetaris 表 → SQL 查到真实行"整条路通。用的是 AWS 公开桶 `noaa-ghcn-pds` 里悉尼 Cottage Point 气象站的日降雨 CSV（200 行、8 列、6.7 KB），不需要任何凭据。
@@ -52,6 +74,8 @@ python3 scripts/zetaris_sql.py --limit 5 --json "SELECT * FROM hometruth_smoke.w
 官方 preflight 从 Mac 跑：`REST datasources` HTTP 200（我们的数据源 0 个），`REST SELECT 1` PASS。实例自带 5 个样例 Lightning 数据库：NOAA_GHCN_S3、NY_TAXI、PUDL_S3、SEC_DATA、TPCDS_DB（Zetaris 的演示数据，不是我们的）。USL 命名空间 0 个。
 
 ## 需要准备的桶和凭据（给超亮的清单）
+
+> 10-27 起不需要了：证据改走 REST 表（上面 10-27 那节），不用桶、不用 AWS 密钥。下面留着备查。
 
 首版数据源定为"S3 桶里的 CSV"。要准备的只有三样：
 
@@ -87,4 +111,4 @@ Mac 上的 AWS CLI 当前登录已过期（`aws login` 提示重新认证）。�
 
 - Hobby 层的配额、并发、存储上限。
 - 能不能接 Cloudflare R2（官方只测过 AWS）。
-- REST 源对我们后端的鉴权头怎么传。
+- REST 源对我们后端的鉴权头怎么传（10-27：现在的 `/api/zetaris/*` 是公开只读的合成数据 + 已公开的挂牌事实，没加鉴权；要加的话 REST 表的 HEADER 段能带自定义头）。

@@ -49,7 +49,7 @@ cp .env.example .env
 | 只想把页面跑起来看流程 | 什么都不填，`TTS_BACKEND=say`（Mac 自带声音，不花钱） | 台词全用模板，需求解析只用规则，照样能走完整个流程 |
 | 模型写台词、解析需求、读照片（Nemotron） | `NVIDIA_API_KEY`（build.nvidia.com 右上角生成，`nvapi-` 开头） | 退回模板和规则 |
 | 模型调用经 Meterless 记录（赛事要求） | 本机开着 Nightshift，填 `METERLESS_BASE_URL` + `METERLESS_RUNTIME_TOKEN`（或整条 `METERLESS_CONNECT_LINK`，或 `METERLESS_TOKEN_FILE`） | 自动直连 NVIDIA，并在日志里如实记"没经 Nightshift" |
-| Zetaris 取证 | `ZETARIS_*` 五项，向超亮要团队的实例地址和 key | 用本地矩阵，Zetaris 查询那一步记为未接 |
+| Zetaris 取证（10-27 起每次开查真查） | `ZETARIS_*` 五项，向超亮要团队的实例地址和 key；表已注册（scripts/zetaris/10，REST 表指向公网 /api/zetaris/<来源>）；`HOMETRUTH_ZETARIS=0` 可关 | 来源查询模拟、页面标 simulated，证据标 local copy |
 | 网页版用 ElevenLabs 女声 | `TTS_BACKEND=elevenlabs`、`ELEVENLABS_API_KEY`、`ELEVENLABS_VOICE=Sarah` | 用 `say`；ElevenLabs 免费档每月 1 万字符，演示前别乱烧 |
 | 真语音版 8631 | `NVIDIA_API_KEY`（识别 Parakeet + 合成 Magpie 共用）；要换 ElevenLabs 合成就 `TTS_PROVIDER=elevenlabs` | `--fake-speech` 模式：打字代替说话、`say` 合成，WebRTC 和打断是真的 |
 

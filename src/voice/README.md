@@ -367,6 +367,7 @@ policy 里：`_agent_reply`（口述 / 粘贴）和 `_inbox_now`（收件箱）�
 | viewing | Your viewing | 租客自己看房拍的 / 勾的——首版没有这类证据，只作为"下一步" |
 | signing | At signing | 合同、条件报告、inventory——永远不是证据来源，只作为"下一步" |
 
+- 10-27 Zetaris 真查（src/voice/zetaris_live.py）：`.env` 有 `ZETARIS_*` 时开查不再模拟——先一次发出 7 个 `source` 事件（`status: running`、`via: zetaris`、`sql`），每条查询回来一个 `done`（真 `request_id`、`rows`、`ms`、`queried_at`；超时用上次的查询则带 `cached: true`；从没查成的是 `status: failed` + `error`）。每条证据带 `via`（`zetaris` / `local` / `agent_reply`）、`evidence_id`，via zetaris 的再带 `request_id`（查询编号）、`sql`、`queried_at`；`mock` 一律 false。没 key 时来源事件照旧模拟并带 `mock: true`。数据接口 `GET /api/zetaris/<来源>`（policy.zetaris_rows）。
 - `policy.STAGE_OF_TABLE` + `stage_of(evidence)`：每条证据（`_ev`）、`/api/listings` 里每条 fact 的 evidence、每个 source 事件都带 `stage`。
 - `policy.NEXT_STEP` + `next_for(dim, status, cell)`：status 是 unknown / inferred / conflict 的格子带 `next = {kind, text, hint}`（kind ∈ ask_agent / see_at_viewing / check_at_signing；text = Ask the agent / See at the viewing / Check at signing；hint ≤ 12 个英文词）。主下一步优先；这格已经有真正的中介回复（material_id 含 reply）而仍没落实的，跳到次下一步（下一段材料），没有次的维度仍是主。E2：朝向未知 → ask_agent（which way the living room faces）；有朝向但只是日照几何 → see_at_viewing（visit around <冬至直射时段的中点>）。G1、A7 没有下一步（没时刻表 / 没中位数就是 unknown）。
 - 卡片行只带 `next` 的 kind；`/api/listings` 的 fact 带完整的 `next`（supported 或没登记的维度是 null）、`value`、`short`（有才加）。详情页按这个契约读：`group.next = {kind, text, hint}`、`group.value`、`group.short`、`item.stage`。
