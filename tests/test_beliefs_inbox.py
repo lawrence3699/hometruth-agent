@@ -33,6 +33,20 @@ HARROW = "L-0001"  # 12 Alder Lane（10-26 起真房源进了池子，Harrow 排
 RID = "r-test-beliefs-0001"
 
 
+_TOUR = os.environ.get("VOICE_TOUR")
+
+
+def setUpModule():  # 逐格讲法（简短播报见 test_voice_brief.py）；开跑时设、跑完放回，不串到别的测试模块
+    os.environ["VOICE_TOUR"] = "full"
+
+
+def tearDownModule():
+    if _TOUR is None:
+        os.environ.pop("VOICE_TOUR", None)
+    else:
+        os.environ["VOICE_TOUR"] = _TOUR
+
+
 class TmpDirs(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -145,7 +159,7 @@ class SessionReplies(TmpDirs):
         self.assertEqual((ch["source"], ch["channel"], ch["version"]), ("inbox", "email", 2))
         self.assertLess(types.index("change"), types.index("card"), "announced before the cards, so the cards already carry it")
         away = next(e for e in ev if e.get("step") == "away")
-        self.assertRegex(away["text"], r"^By email, the agent for 12 Alder Lane says pets goes from \w+ to supported; I've folded that in before ranking\.$")
+        self.assertRegex(away["text"], r"^By email, the agent for 12 Alder Lane says pets is now confirmed; I've folded that in before ranking\.$")
         self.assertEqual(self.cell(ev, HARROW, "J1")["status"], "supported")
         self.assertEqual(inbox.unread(RID), [], "read once, never again")
         self.assertEqual(types.count("done"), 1)
@@ -159,7 +173,7 @@ class SessionReplies(TmpDirs):
         ch = next(e for e in ev if e["type"] == "change")
         self.assertEqual(ch["source"], "inbox_live")
         say = next(e for e in ev if e.get("step") == "away")
-        self.assertRegex(say["text"], r"^Just in, by text: the agent for 12 Alder Lane says pets goes from \w+ to supported\.")
+        self.assertRegex(say["text"], r"^Just in, by text: the agent for 12 Alder Lane says pets is now confirmed\.")
         self.assertIn("card_update", [e["type"] for e in ev])
         self.assertEqual(inbox.unread(RID), [])
         self.assertEqual([e["type"] for e in ev].count("done"), 1)

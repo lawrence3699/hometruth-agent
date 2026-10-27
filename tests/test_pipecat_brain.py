@@ -119,7 +119,7 @@ class BrainCase(unittest.IsolatedAsyncioTestCase):
         b = app.Brain(s, "test")
         b.COMMIT_GRACE_S = b.LATE_FINAL_S = 0
         b._run = self.b._run
-        q = "Two quick things before I search: what's your weekly budget, and when do you need to move in?"
+        q = "Two quick things: what's your weekly budget, and when do you need to move in?"
         b.current_say, b.queued = q, 1
         b._stop_current()
         b.heard = ["mm"]

@@ -22,7 +22,7 @@ import phraser  # noqa: E402
 import policy  # noqa: E402
 from mock_meterless import Mock  # noqa: E402
 
-KEYS = ["METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "METERLESS_API_KEY", "METERLESS_MODEL", "METERLESS_CONNECT_LINK", "NVIDIA_API_KEY",
+KEYS = ["VOICE_TOUR", "METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "METERLESS_API_KEY", "METERLESS_MODEL", "METERLESS_CONNECT_LINK", "NVIDIA_API_KEY",
         "LLM_PROVIDER", "HOMETRUTH_ENV_FILE", "NEEDS_PARSER", "NEEDS_LLM_TIMEOUT", "POLISH_LLM", "NARRATION_LLM", "NARRATION_LLM_TIMEOUT", "VOICE_VARIETY"]
 NEED = "Two bedrooms near Central, I have a cat, and I'd like air con in the bedroom."
 ANSWER = "Under 900, mid-November."
@@ -126,7 +126,7 @@ class SessionNarrationCase(unittest.TestCase):
         for k in KEYS:
             os.environ.pop(k, None)
         os.environ.update({"HOMETRUTH_ENV_FILE": "", "METERLESS_BASE_URL": f"http://127.0.0.1:{self.port}/v1", "METERLESS_RUNTIME_TOKEN": "mock-token",
-                           "VOICE_VARIETY": "0"})
+                           "VOICE_VARIETY": "0", "VOICE_TOUR": "full"})  # 模型写台词只在逐格讲法里用（简短播报是模板，见 test_voice_brief.py）
         P._env_loaded = False
         P.invalidate()
         self.tmp = tempfile.TemporaryDirectory()
@@ -236,9 +236,9 @@ class SessionNarrationCase(unittest.TestCase):
         q = list(s.handle_turn({"text": "Is the first one close to the station?", "listing_id": s.current,
                                 "interrupted": {"active": True, "spoken_idx": 3, "listing_id": s.current, "cut_sentence": cut[4]["text"]}}))
         steps = [e.get("step") for e in q if e["type"] == "say"][:2]
-        self.assertEqual(steps, ["bridge", "answer"])
+        self.assertEqual(steps, ["answer", "back"])  # 10-28 起答问用模板（先说结论再给依据，不等模型、不说内部词）
         ans = next(e for e in q if e.get("step") == "answer")
-        self.assertEqual(ans.get("by"), "llm")
+        self.assertIsNone(ans.get("by"))
         self.assertNotIn("close to the station?", ans["text"])  # 不许把租客的问题原样复述
         r = list(s.handle_turn({"text": "The agent said the split system is in the living room only."}))
         self.assertEqual([e.get("step") for e in r if e["type"] == "say"][:2], ["bridge", "change"])

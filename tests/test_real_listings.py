@@ -197,7 +197,7 @@ class PolicyAndWords(unittest.TestCase):
         self.assertNotIn("K2", plain)
         self.assertIn("Kingsford's median of 830", phraser.cell_sentence("A1", cells["A1"], L, self.profile("")))
         self.assertIn("estimated from the distance", phraser.cell_sentence("G1", cells["G1"], L, self.profile("")))
-        self.assertTrue(phraser.cell_sentence("D1", cells["D1"], L, self.profile("")).startswith("Condition: a conflict."))
+        self.assertTrue(phraser.cell_sentence("D1", cells["D1"], L, self.profile("")).startswith("Condition: doesn't match what you asked."))
         self.assertIn("floor plan", phraser.best_question("K2", cells["K2"], self.profile("")))
         card = policy.card_payload(L, cells, 1)
         d1 = next(c for c in card["cells"] if c["dim"] == "D1")

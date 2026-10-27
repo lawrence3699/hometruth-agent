@@ -19,7 +19,7 @@ from llm import provider as P  # noqa: E402
 import policy  # noqa: E402
 from mock_meterless import Mock  # noqa: E402
 
-KEYS = ["METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "METERLESS_API_KEY", "METERLESS_MODEL", "METERLESS_CONNECT_LINK", "NVIDIA_API_KEY",
+KEYS = ["VOICE_TOUR", "METERLESS_BASE_URL", "METERLESS_RUNTIME_TOKEN", "METERLESS_API_KEY", "METERLESS_MODEL", "METERLESS_CONNECT_LINK", "NVIDIA_API_KEY",
         "LLM_PROVIDER", "HOMETRUTH_ENV_FILE", "NEEDS_PARSER", "NEEDS_LLM_TIMEOUT", "POLISH_LLM", "NARRATION_LLM", "VOICE_VARIETY"]
 NEED = "Two bedrooms near Central, I have a cat, and I'd like air con in the bedroom."
 
@@ -39,7 +39,7 @@ class NeedsCase(unittest.TestCase):
         for k in KEYS:
             os.environ.pop(k, None)
         os.environ.update({"HOMETRUTH_ENV_FILE": "", "METERLESS_BASE_URL": f"http://127.0.0.1:{self.port}/v1", "METERLESS_RUNTIME_TOKEN": "mock-token",
-                           "NARRATION_LLM": "0", "VOICE_VARIETY": "0"})  # 这里只测需求解析；台词交给模型写在 test_narrator.py 测
+                           "NARRATION_LLM": "0", "VOICE_VARIETY": "0", "VOICE_TOUR": "full"})  # 这里只测需求解析；台词交给模型写在 test_narrator.py 测；开场复述是逐格讲法的
         P._env_loaded = False
         P.invalidate()
         self.tmp = tempfile.TemporaryDirectory()
@@ -148,13 +148,13 @@ class NeedsCase(unittest.TestCase):
         self.assertEqual((needs["parser"], needs["parse"]["provider"]), ("llm", "meterless"))
         self.assertEqual(needs["asking"], ["A1", "A4"])
         ask = next(e for e in evs if e["type"] == "ask")
-        self.assertEqual(ask["text"], "Two quick things before I search: what's your weekly budget, and when do you need to move in?")
+        self.assertEqual(ask["text"], "Two quick things: what's your weekly budget, and when do you need to move in?")
         log = P.LOG.read_text()
         self.assertIn('"task": "needs_parse"', log)
         self.assertNotIn("mock-token", log)
 
     def test_polish_is_off_by_default_and_validated_when_on(self):
-        q = "Two quick things before I search: what's your weekly budget, and when do you need to move in?"
+        q = "Two quick things: what's your weekly budget, and when do you need to move in?"
         self.assertEqual(policy.polish_llm(q, ["A1", "A4"]), q)
         n = len([r for r in self.mock.requests if r["method"] == "POST"])
         self.assertEqual(n, 0)

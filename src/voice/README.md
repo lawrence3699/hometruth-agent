@@ -49,6 +49,8 @@ Pipecat 真语音版（同一套 policy，另一个前端，端口 8631）：
 | highlight | listing_id、dim、status、question、viewing（10-27 起：没有可问中介的格子时，最值得去看房核的那格） | 那张卡变成正在讲（蓝框、Now discussing），那一行浅蓝底 + 左侧蓝条；question 时那行写 Best question for the agent；viewing 时写 Worth checking at the viewing |
 | evidence | listing_id、dim、label、status、items[{table、row、material_id、text、stage（10-27 起，见「材料分段」）、request_id、mock、read_by、image}] | 右栏证据面板：房源 › 维度 + 状态，每条 Table / Row / Material、原文、request_id、mock；photo_facts 的条目多 "Read by Nemotron VL" 和照片缩略图；讲过的行之后可以点开再看 |
 | change | listing_id、dim、from、to、source、ts、rank_before、rank_after | 右栏 Changes 一条（旧状态 → 新状态、来源、时间，排名变了写新顺序）；按 rank_after 挪卡片 |
+| beat | ms（10-28 起，简短播报里套与套之间，1500） | 停一下、状态写 Your turn：这时开口不算打断别人；没人说话就接着讲（app.js `beat()`） |
+| questions | items[{listing_id、street、dim、question}]、extra[]、legal（10-28 起，答 "draft the questions" 时先发） | 现在只念出来（每句一个 say）；以后可以画成清单 |
 | done | | 这轮结束；若在等回答则进入听的状态 |
 | error | message | 红字 |
 
@@ -375,3 +377,17 @@ policy 里：`_agent_reply`（口述 / 粘贴）和 `_inbox_now`（收件箱）�
 - 来源面板（ui-qi.js `source()`）：五段标题 `li.ht-stage`，来源按 stage 插进对应段；viewing / signing 两段各一行灰字 "Your viewing — nothing yet; we'll say what to look for" / "At signing — not used for ranking"；计数只数 `li:not(.ht-stage)`。`sourceName()`：documents 的 row 含 reply → "Agent reply"。
 - 台词 / 提示词里"inspection report"全部换成 the agent's reply；narrator 的出处归一表把 agent's reply / agent's email / the agent said / confirmed 归成 "agent reply"，台词审查认得这个出处名。
 - 验证：tests/test_materials.py（stage 都在五段内、矩阵全文没有 inspection、非 supported 格子的 next.kind 在三种之内而 supported 没有、来源 label 没有 Inspection、card_payload 行带 next，另加几条 next_for / best_question 的用例）；回归换新基线 runs/voice_regression/baseline_8630_materials.jsonl。
+
+## 简短播报 + 听得懂插话（10-28 凌晨，docs/12；超亮："都解决"）
+
+模拟 19 个顾客（scripts/voice_customer_sim.py）发现：说完需求要听 4 分半、插话 15 句只对 1 句、补条件就从头念。改法和验收数字在 docs/12；这里只记实现。
+
+- **讲法开关** `VOICE_TOUR`：`brief`（默认）每套三句——地址 + 租金 + 通勤（`phraser.brief_intro`）、最多两件没落实的（`brief_verdict`）、最该问中介的一句（`brief_question`，第二次问同样的说 "Same question for this agent: …"，第三次 "Same pets question here too."）；套与套之间一个 `beat` 事件（`BEAT_MS = 1500`）。`full` = 10-27 前的逐格讲法（模型写台词只在这里用；旧测试固定用它，见各测试文件的 `setUpModule`）。说 "short version" 之后是 `headlines`（每套一句）。开场不再复述需求（在页面芯片上），只说假设和 "Checking 7 sources now."，第一套房约 4 秒后开讲。
+- **插话分类** `policy.intent()`：先剥掉 wait / hang on / sorry / actually 这类开头；单个命令词（next、stop、continue、repeat、shorter、back）要整句只有它才算命令；带 make it / can we / actually 的问句算改需求；拿不准返回 `question?`，再给 `intent_llm`（Nemotron）2 秒兜底。`Session._dispatch()` 按种类走：`_answer`（押金：挂牌没写就说 NSW 上限 4 周租金并记进问题清单；"下一套便宜吗" 用 `phraser.comparative`）、`_compare`、`_repeat`、`_shorter`、`_detail`（tell me more = 这一套的逐格版）、`_jump`（go back to the first one）、`_reject`（划掉这套，`memory.add_rejected` 记住，下次也不推）、`_update` / `_retune`（改需求：一句 "Under 800 a week, noted." + 谁掉出去谁进来 + 只讲没听过的那几套，不从头念）、`_questions`。答完一句 "Back to the first place." 从被切断的那句接着讲（`_rewind_to`，找不到编号就回到这次播报的开头 `emit_from`）。句子编号整个会话不重复（`idx_seq`）。
+- **答话一句一个 say**（`policy.sentences()`）：比较、押金、问题清单、开场假设都拆开，句间能打断，最长一句约 8 秒。
+- **需求解析补的**：800 max / tops / make it 800；"just me" = 一房；"you and SW" / "u n s w" → UNSW（`ANCHOR_ALIASES`）；"near the beach" 这类量不了的地方直接问 UNSW / CBD / Central 选哪个，开查时说 "I can't measure trips to the beach yet."；反问时说 "I don't know when yet" 就不再追问，开查时假设（`DONT_KNOW`、`Session.declined`）。
+- **老用户再来**：简短播报下欢迎回来只说变了什么（"Welcome back. This time budget under 800 a week, and the rest as before."），机器先开口那句只点卧室、通勤、预算（`phraser.short_summary`）；还在等中介的问题到那套房时会问，开场不再念。
+- **页面（static/app.js + notion/ui-notion.js）**：`beat` 时显示 Your turn，这时开口直接算插话；说话时点圆球或按空格 = "让我说"（立刻停、开始听；以前点圆球是关麦克风）；输入框下面一排快捷按钮 Next / More on this one / Pause / Continue（只在暂停时出现）/ Agent questions（`[data-say]`，和说出来一样；Pause 走 `stopAll`）；只说一个命令词（stop / pause / wait / next / skip）也马上停；Stop / Esc / Pause 记下停在哪（`S.stoppedAt`），下一句话带上它，说 continue 从那句接着讲，不重新查。
+- **第二档：外放时的抢话**（要真机试）：外放时比较麦克风音量和自己播放的音量，比平时的回声比例高 12 dB 连续 4 帧（约 120 ms）→ 声音压到 25%（`duck()`），确认是插话再停，2.5 秒没下文恢复；`?duck=0` 或 localStorage `ht_duck=0` 关掉。插上耳机自动勾 Headphones（`detectHeadphones()`，按设备名；手动改过就不再自动改）。
+- **8631（Pipecat 真语音）**：`beat` / `questions` 事件只是转给页面，管线里不停顿；简短播报的台词照样用。
+- **测**：tests/test_voice_brief.py（23 条：播报长度和用词、每种插话、真实说法的分类、模糊地点、记住不要的房）；模拟顾客 `.venv/bin/python scripts/voice_customer_sim.py http://127.0.0.1:8661 runs/voice_sim/<名字>.json`（`ONLY=P01,P05` 只跑几个；21 个顾客，P20、P21 对应 Next 和 More 按钮），报告在 runs/voice_sim/（不进 git）。

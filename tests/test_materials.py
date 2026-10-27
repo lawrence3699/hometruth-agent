@@ -38,6 +38,20 @@ def profile(**kw) -> dict:
     return p
 
 
+_TOUR = os.environ.get("VOICE_TOUR")
+
+
+def setUpModule():  # 逐格讲法（简短播报见 test_voice_brief.py）；开跑时设、跑完放回，不串到别的测试模块
+    os.environ["VOICE_TOUR"] = "full"
+
+
+def tearDownModule():
+    if _TOUR is None:
+        os.environ.pop("VOICE_TOUR", None)
+    else:
+        os.environ["VOICE_TOUR"] = _TOUR
+
+
 class Stages(unittest.TestCase):
     def test_every_listing_summary_evidence_has_a_stage(self):  # (a)
         n = 0

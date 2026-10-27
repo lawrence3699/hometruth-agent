@@ -32,6 +32,20 @@ def events(session: policy.Session, text: str) -> list:
     return list(session.handle_turn({"text": text}))
 
 
+_TOUR = os.environ.get("VOICE_TOUR")
+
+
+def setUpModule():  # 默认的简短播报（欢迎回来那句只说变了什么）；跑完放回
+    os.environ["VOICE_TOUR"] = "brief"
+
+
+def tearDownModule():
+    if _TOUR is None:
+        os.environ.pop("VOICE_TOUR", None)
+    else:
+        os.environ["VOICE_TOUR"] = _TOUR
+
+
 class MemoryCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -87,6 +101,7 @@ class MemoryCase(unittest.TestCase):
         self.assertEqual(kinds, ["state", "needs", "ask", "say", "done"])
         self.assertEqual(w[1]["remembered"], ["budget", "bedrooms", "anchor", "move_in", "pets"])
         self.assertTrue(w[3]["text"].startswith("Welcome back. Last time it was two bedrooms"))
+        self.assertLessEqual(len(w[3]["text"].split()), 24, w[3]["text"])  # 简短播报只点卧室、通勤、预算（以前整段复述约 50 词）
         self.assertTrue(w[3]["text"].endswith("Same again, or has anything changed?"))
         self.assertEqual(w[3]["step"], "welcome")
         self.assertEqual(list(s.welcome()), [])  # only once
@@ -109,8 +124,7 @@ class MemoryCase(unittest.TestCase):
         ev = events(s, "Make it under 800 this time")
         says = [(e.get("step"), e["text"]) for e in ev if e["type"] == "say"]
         self.assertEqual(says[1][0], "welcome")
-        self.assertTrue(says[1][1].startswith("Welcome back. Last time it was two bedrooms, under 900 a week"), says[1][1])
-        self.assertIn("this time budget under 800 a week, and the rest as before", says[1][1])
+        self.assertEqual(says[1][1], "Welcome back. This time budget under 800 a week, and the rest as before.")  # 简短播报：需求在页面上，只说变了什么
         self.assertEqual(s.profile["budget"], 800)
         self.assertEqual(s.profile["bedrooms"], 2)
         needs = [e for e in ev if e["type"] == "needs"][0]

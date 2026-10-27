@@ -278,7 +278,7 @@ window.HTUI = (() => {
   </div>
   <div class="nt-foot-bottom"><span>© 2026 HomeTruth prototype · Open Agent Hackathon</span><span>Real listing photos © their agencies · illustrative photos from resident.co.nz</span><span>Layout after notion.com · motion after Lucian UX/UI Prompt (MIT)</span></div>
 </footer>
-<div class="nt-dock" id="dock"></div>
+<div class="nt-dock" id="dock"><div class="nt-dock-row" id="quick" role="group" aria-label="Quick replies" hidden><button type="button" class="nt-qr" data-say="next" title="Skip to the next place">Next</button><button type="button" class="nt-qr" data-say="Tell me more about this one">More on this one</button><button type="button" class="nt-qr nt-qr-pause" data-say="__pause" title="Pause (Esc)">Pause</button><button type="button" class="nt-qr nt-qr-cont" data-say="continue">Continue</button><button type="button" class="nt-qr" data-say="Draft the questions">Agent questions</button></div></div>
 <div class="fx-toasts" id="toasts" aria-live="polite"></div>
 <dialog class="nt-peek" id="peek" aria-label="Place"></dialog>
 <div class="fx-lightbox" id="lightbox" hidden><button type="button" class="fx-lb-nav p" data-lb-prev aria-label="Previous photo">‹</button><img alt=""><p class="fx-lb-cap"></p><button type="button" class="fx-lb-nav n" data-lb-next aria-label="Next photo">›</button></div>`;
@@ -287,7 +287,7 @@ window.HTUI = (() => {
     const html = document.documentElement;
     const app = $('#app'); app.innerHTML = SKELETON();
     const el = {
-      app, nav: $('#nav'), text: $('#text'), composer: $('#composer'), composerHome: $('#composer-home'), dock: $('#dock'), ph: $('#ph'),
+      app, nav: $('#nav'), text: $('#text'), composer: $('#composer'), composerHome: $('#composer-home'), dock: $('#dock'), quick: $('#quick'), ph: $('#ph'),
       phase: $('#phase'), sayPhase: $('#say-phase'), caption: $('#caption'), transcript: $('#transcript'), conversation: $('#conversation'),
       crumb: $('#crumb'), title: $('#page-title'), props: $('#props'), sideNeeds: $('#side-needs'), sources: $('#sources'), sourcesCount: $('#sources-count'), qbar: $('#qbar'),
       sideShort: $('#side-short'), views: $('#views'), walk: $('#view-walk'), table: $('#view-table'), steps: $('#view-steps'), changes: $('#view-changes'), changesCount: $('#changes-count'),
@@ -296,7 +296,7 @@ window.HTUI = (() => {
     };
     let stage = 'home', view = 'walk', userPickedView = false, phaseNow = 'idle';
     const cards = new Map();        // listing id → { L, rank, ask:Set, see:Set, was:Map, flash:Set|null, qtext }
-    let mainId = null, litKey = null;
+    let mainId = null, litKey = null, lastQ = null;
     const evCache = new Map();      // "id|dim" → evidence event
     const openRows = new Set();     // rows whose evidence the renter opened by hand
     const sources = new Map();      // name → source event
@@ -372,7 +372,7 @@ window.HTUI = (() => {
     function setStage(s) {
       if (stage === s) return; const from = stage; stage = s; html.dataset.stage = s;
       if (s === 'home') { el.composerHome.append(el.composer); }
-      else if (from === 'home') { el.dock.append(el.composer); scrollTo({ top: 0 }); }
+      else if (from === 'home') { el.dock.prepend(el.composer); scrollTo({ top: 0 }); }  // the quick replies (app.js clicks [data-say]) sit under the box
       typing.sync();
     }
     html.dataset.stage = 'home'; html.dataset.phase = 'idle';
@@ -789,7 +789,10 @@ window.HTUI = (() => {
       caption(t) {
         el.caption.classList.remove('dim', 'hint');
         if (!t) { el.caption.textContent = ''; return; }
-        const m = /^best question(?: for this agent)?:\s*(.+)$/i.exec(t); if (m && mainId && cards.get(mainId)) cards.get(mainId).qtext = m[1];
+        // 10-28 brief tour: "Ask the agent: …" / "Worth asking the agent: …"; "Same question for this agent: …" / "Same pets question here too." reuse the last full one
+        const m = /^(?:best question(?: for this agent)?|(?:worth )?ask(?:ing)? the agent):\s*(.+)$/i.exec(t);
+        if (m) lastQ = m[1]; const q = m ? m[1] : /^same\b[\w\s-]*\bquestion\b/i.test(t) ? lastQ : null;
+        if (q && mainId && cards.get(mainId)) cards.get(mainId).qtext = q;
         panel.appendTurn('assistant', t, joinTurn);
         fx.stream(el.caption, t); joinTurn = true;
       },
@@ -858,7 +861,7 @@ window.HTUI = (() => {
         const rank = Number(L.rank) || 99;
         let rec = cards.get(L.id);
         if (rec) { rec.L = L; rec.rank = rank; }
-        else { rec = { L, rank, ask: new Set(), see: new Set(), was: new Map(), flash: null, moved: null, qtext: null }; cards.set(L.id, rec); }
+        else { rec = { L, rank, ask: new Set(), see: new Set(), was: new Map(), flash: null, moved: null, qtext: null }; cards.set(L.id, rec); el.quick.hidden = false; }
         if (mainId !== L.id) litKey = null;
         if (stage !== 'results') setStage('results');
         if (view !== 'walk' && !userPickedView) setView('walk');

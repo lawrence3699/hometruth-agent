@@ -52,14 +52,14 @@ Rules:
 - Rewrite the whole sentence in your own words: keep the meaning, change the structure. A line that repeats the fact word for word, or just tacks a word onto it, doesn't count. Use a different sentence shape for each line; don't start two lines the same way.
 - Never use the bare words supported, inferred, conflict or unknown as a tag, and never start a line with a label like "Supported:" or "Pets:". Say what the status means, in your own words each time: supported means it checks out and the materials back it up; inferred means you're reading between the lines and it's not confirmed; conflict means it clashes with what the renter asked; unknown means you can't confirm it from the materials, so it's one to ask the agent. Each fact comes with a status_hint.
 - Bad: "Two bedrooms, as asked, supported." Bad: "Rent is 890 a week, inside your 900 budget, supported." Bad: "Pets: supported. The by-laws allow pets."
-- One or two short sentences per line, up to about 25 words, contractions, no lists, no emojis, no headings, no quotes. Now and then refer briefly to what the renter said, but never repeat their words back as a question.
+- One or two short sentences per line, up to about 20 words, contractions, no lists, no emojis, no headings, no quotes. Never say "welcome" or "welcome back" in a tour line (the renter never left), and never say cell, supported or inferred. Now and then refer briefly to what the renter said, but never repeat their words back as a question.
 - Keys: "intro" keeps the position (first, second...), street, suburb and weekly rent. "special" says what sets this place apart. "question" says this is the best thing to ask the agent, then the question itself, ending with "?". "viewing" says there is nothing to ask the agent on this one, but names what to look at or listen for at the viewing. "next" is a hand-over of at most 8 words. "wrap" closes the tour and still offers to draft the questions or compare. "ask" asks every item listed in one friendly question. "ack" confirms the changed need and says you'll re-rank; it is not a question. "answer" answers the renter's question using the fact. "change" names the place and says what the agent's reply changed and what follows from it. "welcome" greets a renter who has been here before, repeats what they asked for last time and asks whether anything has changed, ending with "?". "back" greets a renter who has been here before and repeats what they asked for this time (same as last time, or what changed, from the fact), then says you are checking the sources now. Two statements, no question mark at all: they already told you whether anything changed, so do not ask. Never say re-rank or re-check, because nothing has been ranked yet.
 - Reply with ONE JSON object: every key in "reply_keys", each value one line of text. Nothing before or after the JSON."""
 
 STATUS_RE = {
     "inferred": r"\b(infer|inferr?ed|inferring|likely|probably|seems?|looks? like|suggests?|appears?|reading between|not confirmed|unconfirmed|"
                 r"my guess|guess(ing)?|lean(ing)?|assum\w*|i'?d say|i think|can'?t be sure|nobody'?s confirmed|no one'?s confirmed|hasn'?t (been )?confirmed|"
-                r"haven'?t confirmed|only infer|best guess|reading (it|that) as|i reckon|chances are)\b",
+                r"haven'?t confirmed|only infer|best guess|reading (it|that) as|i reckon|chances are|estimat\w*|rough(ly)?|approximately)\b",
     "conflict": r"\b(conflict|doesn'?t match|mismatch|clash|contradicts?|over your|above your|misses|short of|outside|beyond|not what you asked|doesn'?t fit|"
                 r"unless|falls short|later than|too (late|far|small|expensive)|says no|rules? (it|that) out|snag|catch|doesn'?t work|won'?t work|after your|"
                 r"past your|over budget|above budget|more than your|exceeds|doesn'?t line up|at odds|but you (asked|wanted|need)|not (quite )?what you|"
@@ -88,6 +88,7 @@ TAG_RE = re.compile(r"(,|;|\band\b)\s*(supported|inferred|conflict|unknown)\s*([
 STATUS_HINT = {"supported": "it checks out, the materials back it up", "inferred": "you're inferring this, it's not confirmed",
                "conflict": "it clashes with what the renter asked", "unknown": "you can't confirm it from the materials; one to ask the agent"}
 DIM_KEY = re.compile(r"^[A-K]\d$")
+TOUR_FORBID = r"\bwelcome\b|\bcells?\b|\bsupported\b|\binferred\b"  # 导览台词里不许出现（docs/12 问题 5、6）
 QUESTION_WORDS = r"agent|ask|question|check|confirm|worth|find out|in writing|get (it|that) in writing"
 STOP = set("""a an the and but or so that this it its is are was were be been being your you yours from for with which what who whom when where there here
 have has had not only just also into onto than then them they their about after before under over out one two three four five six seven eight nine ten
@@ -205,7 +206,7 @@ def _clean(text: Any) -> Optional[str]:
 def check_line(text: Any, *, required: Iterable[str] = (), allowed: Iterable[str] = (), status: Optional[str] = None,
                words: Optional[str] = None, must: Any = None, max_words: Optional[int] = None,
                question: bool = False, fact: Optional[str] = None, avoid: Iterable[str] = (), overlap: float = 0.0,
-               statement: bool = False) -> Tuple[Optional[str], str]:
+               statement: bool = False, forbid: Optional[str] = None) -> Tuple[Optional[str], str]:
     """一行台词过审：返回 (干净的句子, "") 或 (None, 原因)。fact 给了就查"是不是原样照抄"和"实词还剩多少"（overlap 是最低比例），
     avoid 是不许整句复述的话（租客原话），must 是必须出现的词（一个正则，或一列正则都要命中）。"""
     t = _clean(text)
@@ -213,6 +214,8 @@ def check_line(text: Any, *, required: Iterable[str] = (), allowed: Iterable[str
         return None, "empty or markdown or too long"
     if LABEL_PREFIX.match(t):
         return None, "starts with a status label"
+    if forbid and re.search(forbid, t, re.I):
+        return None, "forbidden wording"  # 10-28：导览中途说 "Welcome back"、说 cell / supported 这类内部词
     if TAG_RE.search(t):
         return None, "status word used as a tag"
     if fact is not None and _norm(t) == _norm(fact):
@@ -427,6 +430,8 @@ def _tour_call(i: int, n: int, L: dict, cells: Dict[str, dict], profile: dict, r
         STATS["failed"] += 1
         log.info(f"L{i}: answer was not JSON → templates ({res.ms} ms)")
         return {}
+    for sp in specs.values():
+        sp.setdefault("forbid", TOUR_FORBID)
     out, rejected, copied = _judge(_flatten(obj), specs, avoid=heard)
     STATS["accepted"] += len(out)
     STATS["rejected"] += len(rejected)

@@ -15,7 +15,10 @@ const S = {
   turnT0: 0, firstEventMs: null, firstAudioMs: null, events: 0, micOn: false, pausedForUser: false, holdForFinal: false,
   resumeTimer: null, recog: null, recogWanted: false, speechStartT: 0, lastTurnText: '', interruptedFlag: false,
   lastBusy: null, pauseGuard: null,  // lastBusy: the server's last thinking/searching state, shown again between sentences while it is still working
+  beatDone: null, beatTimer: null, stoppedAt: null, headphonesTouched: false, duckTimer: null,
 };
+// 10-28 (docs/12): duck-on-double-talk in speakers mode is on unless ?duck=0 or localStorage ht_duck=0
+const DUCK = (() => { try { if (/[?&]duck=0\b/.test(location.search)) return false; return localStorage.getItem('ht_duck') !== '0'; } catch (e) { return true; } })();
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const tokens = (t) => (t || '').toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
 const busy = () => S.streamOpen || S.timeline.length > 0 || S.playing || !!S.currentSay;
@@ -89,6 +92,25 @@ function unmuteIOS() {
 document.addEventListener('click', () => { ensureCtx(); unmuteIOS(); }, { capture: true });
 document.addEventListener('touchend', () => { ensureCtx(); unmuteIOS(); }, { capture: true });
 document.addEventListener('keydown', () => ensureCtx(), { capture: true });
+let outGain = null, outAnalyser = null, outBuf = null;
+function outChain(ctx) {  // every sentence plays through one gain (ducking) and one analyser (how loud we are right now)
+  if (!outGain || outGain.context !== ctx) {
+    outGain = ctx.createGain(); outAnalyser = ctx.createAnalyser(); outAnalyser.fftSize = 1024; outBuf = new Float32Array(outAnalyser.fftSize);
+    outGain.connect(outAnalyser); outAnalyser.connect(ctx.destination);
+  }
+  return outGain;
+}
+function outDb() {
+  if (!outAnalyser || !S.playing) return -100;
+  outAnalyser.getFloatTimeDomainData(outBuf); let s = 0; for (let i = 0; i < outBuf.length; i++) s += outBuf[i] * outBuf[i];
+  return 20 * Math.log10(Math.sqrt(s / outBuf.length) + 1e-7);
+}
+function duck(on) {  // speakers mode: someone talks over us → drop to a quarter volume until we know whether it was a real interruption
+  if (!outGain) return;
+  const t = outGain.context.currentTime; outGain.gain.cancelScheduledValues(t); outGain.gain.setTargetAtTime(on ? 0.25 : 1, t, on ? 0.02 : 0.12);
+  S.ducked = on; clearTimeout(S.duckTimer);
+  if (on) S.duckTimer = setTimeout(() => { if (S.ducked && !S.pausedForUser) duck(false); }, 2500);
+}
 const player = {
   src: null, done: null, buffer: null, startedAt: 0, pausedFlag: false, pauseOffset: 0, guard: null,
   async play(blob) {
@@ -103,7 +125,7 @@ const player = {
     });
   },
   _start(ctx, offset, finish) {
-    const s = ctx.createBufferSource(); s.buffer = this.buffer; s.connect(ctx.destination);
+    const s = ctx.createBufferSource(); s.buffer = this.buffer; s.connect(outChain(ctx));
     s.onended = () => { if (this.src === s && !this.pausedFlag) finish(); };
     this.src = s; this.startedAt = ctx.currentTime - offset; s.start(0, offset);
     clearTimeout(this.guard); this.guard = setTimeout(() => { if (this.done === finish && !this.pausedFlag) { console.warn('audio guard fired'); finish(); } }, (this.buffer.duration - offset) * 1000 + 1500);
@@ -136,9 +158,12 @@ function speakBrowser(text) { return new Promise((resolve) => {
 /* ---------------- event stream ---------------- */
 async function sendTurn(text, source, interrupted) {
   text = (text || '').trim(); if (!text) return;
+  if (!(interrupted && interrupted.active) && S.stoppedAt) interrupted = S.stoppedAt;  // stopped with the Stop button / Esc / Pause: tell the server where
+  S.stoppedAt = null;
   const gen = ++S.gen;
   if (S.ac) S.ac.abort();
   const ac = new AbortController(); S.ac = ac;
+  endBeat(); duck(false);
   player.stop(); S.timeline = []; S.currentSay = null; S.playing = false; S.expectAnswer = false; S.lastBusy = null; clearTimeout(S.pauseGuard);
   S.turnT0 = performance.now(); S.firstEventMs = null; S.firstAudioMs = null; S.lastTurnText = text; S.interruptedFlag = !!(interrupted && interrupted.active);
   ui.userSaid(text); ui.phase('thinking', 'Analysing'); latency();
@@ -188,6 +213,7 @@ async function apply(ev, gen) {
     case 'evidence': ui.evidence(ev); break;
     case 'ask': S.expectAnswer = true; break;
     case 'say': await speak(ev, gen); break;
+    case 'beat': await beat(ev, gen); break;
     case 'done':
       S.lastBusy = null;
       if (S.expectAnswer) { S.expectAnswer = false; ui.phase('listening', 'Your turn'); if (S.micOn || !el.autolisten.checked) {} else el.text.focus(); }
@@ -195,7 +221,15 @@ async function apply(ev, gen) {
       break;
   }
 }
+function beat(ev, gen) {  // 10-28: a short pause after each place; nobody talking over us, so this is where a renter on speakers gets a word in
+  if (gen !== S.gen || S.pausedForUser) return;
+  ui.phase('listening', 'Your turn');
+  return new Promise((resolve) => { S.beatDone = resolve; S.beatTimer = setTimeout(() => { if (S.beatDone === resolve) S.beatDone = null; resolve(); }, ev.ms || 1500); });
+}
+function endBeat() { clearTimeout(S.beatTimer); const d = S.beatDone; S.beatDone = null; if (d) d(); }
 async function speak(ev, gen) {
+  if (gen !== S.gen) return;
+  while (S.pausedForUser && gen === S.gen) await new Promise((r) => setTimeout(r, 80));  // the renter started talking in a pause: hold the next sentence
   if (gen !== S.gen) return;
   S.currentSay = ev; S.lastSaid = ev.text; ui.caption(ev.text);
   let blob = null; try { blob = await ev._audio; } catch (e) { blob = null; }
@@ -215,6 +249,7 @@ function metric() {
 /* ---------------- barge-in: VAD + recogniser ---------------- */
 const vad = {
   ctx: null, analyser: null, buf: null, floor: -58, speaking: false, above: 0, below: 0, timer: null, stream: null,
+  ratios: [], dt: 0,  // double-talk detector (speakers mode): mic level minus our own playback level, last ~3 s; a jump of 12 dB over the usual echo = someone talking
   async start() {
     if (this.ctx) return;
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
@@ -223,12 +258,23 @@ const vad = {
     this.buf = new Float32Array(this.analyser.fftSize); this.timer = setInterval(() => this.tick(), 30);
   },
   stop() { clearInterval(this.timer); this.timer = null; if (this.stream) this.stream.getTracks().forEach((t) => t.stop()); this.ctx = null; this.stream = null; this.speaking = false; },
+  doubleTalk(db) {  // 10-28 (docs/12, 第二档): through speakers, tell our own echo from a renter talking over us, and duck
+    const o = outDb();
+    if (!DUCK || el.headphones.checked || !S.playing || o < -50) { this.dt = 0; return; }
+    const r = db - o;
+    this.ratios.push(r); if (this.ratios.length > 100) this.ratios.shift();
+    if (this.ratios.length < 15) return;  // learn the echo path for ~0.5 s first
+    const usual = [...this.ratios].sort((a, b) => a - b)[Math.floor(this.ratios.length * 0.3)];
+    if (r > usual + 12 && db > this.floor + 8) { if (++this.dt === 4 && !S.ducked && !S.pausedForUser) duck(true); }
+    else this.dt = 0;
+  },
   tick() {
     this.analyser.getFloatTimeDomainData(this.buf); let s = 0; for (let i = 0; i < this.buf.length; i++) s += this.buf[i] * this.buf[i];
     const db = 20 * Math.log10(Math.sqrt(s / this.buf.length) + 1e-7);
     const margin = (S.playing && !el.headphones.checked) ? 14 : 8;
     if (!this.speaking && db < this.floor + 6) this.floor = this.floor * 0.97 + db * 0.03;
     const thr = Math.max(this.floor + margin, -52);
+    this.doubleTalk(db);
     if (db > thr) { this.above++; this.below = 0; if (!this.speaking && this.above >= 4) { this.speaking = true; S.speechStartT = performance.now(); onSpeechStart(); } }
     else { this.below++; this.above = 0; if (this.speaking && this.below >= 12) { this.speaking = false; onSpeechEnd(performance.now() - S.speechStartT); } }
     ui.meter(db, thr);
@@ -239,7 +285,7 @@ function armPauseGuard() {  // an interruption whose final transcript never arri
 }
 function onSpeechStart() {  // standard 1: pause within ~120 ms of voiced audio
   if (!busy()) { ui.phase('listening', 'Listening'); return; }
-  if (!el.headphones.checked) return;  // 10-27: through speakers the mic hears our own voice and this paused every sentence ("it never talks"); without headphones only a real, non-echo transcript interrupts (handleInterim)
+  if (!el.headphones.checked && S.playing) return;  // 10-27: through speakers the mic hears our own voice and this paused every sentence ("it never talks"); while we talk, only a real transcript (handleInterim) or the double-talk duck reacts. In a pause (beat) there is no echo, so voice alone holds the next sentence
   clearTimeout(S.resumeTimer); player.pause(); S.pausedForUser = true; armPauseGuard(); ui.interrupt(); ui.phase('listening', 'Go ahead');
 }
 function onSpeechEnd(durMs) {  // standard 5: short noises resume unless a real transcript arrives
@@ -248,22 +294,30 @@ function onSpeechEnd(durMs) {  // standard 5: short noises resume unless a real 
   clearTimeout(S.resumeTimer);
   S.resumeTimer = setTimeout(() => { if (S.pausedForUser && !S.holdForFinal) falseAlarm(); }, wait);
 }
-function falseAlarm() { clearTimeout(S.pauseGuard); S.pausedForUser = false; S.holdForFinal = false; player.resume(); if (busy()) ui.phase('speaking', 'Speaking'); }
+function falseAlarm() { clearTimeout(S.pauseGuard); S.pausedForUser = false; S.holdForFinal = false; duck(false); player.resume(); if (busy()) ui.phase('speaking', 'Speaking'); }
 const isFiller = (t) => { const w = tokens(t); return w.length > 0 && w.every((x) => FILLERS.has(x)); };
 function isEcho(t) {  // standard 3: what we hear that matches what we just said is our own voice
   const w = tokens(t); if (w.length < 3) return false;
   const said = new Set([...tokens(S.currentSay ? S.currentSay.text : ''), ...tokens(S.lastSaid)]);
   const hit = w.filter((x) => said.has(x)).length; return hit / w.length >= 0.6;
 }
+const COMMAND_WORDS = new Set(['stop', 'pause', 'wait', 'next', 'skip']);
 function handleInterim(t) {
   ui.transcript(t, true);
-  if (busy() && tokens(t).length >= 2 && !isFiller(t) && !isEcho(t)) { S.holdForFinal = true; if (!S.pausedForUser) { clearTimeout(S.resumeTimer); player.pause(); S.pausedForUser = true; armPauseGuard(); ui.phase('listening', 'Go ahead'); } }
+  const w = tokens(t);
+  // 10-28: a one-word command stops us at once (no waiting for the browser to decide you finished), unless it is a word we are saying ourselves
+  const command = w.length === 1 && COMMAND_WORDS.has(w[0]) && !new Set(tokens(S.currentSay ? S.currentSay.text : '')).has(w[0]);
+  if (busy() && (command || (w.length >= 2 && !isFiller(t) && !isEcho(t)))) { S.holdForFinal = true; if (!S.pausedForUser) { clearTimeout(S.resumeTimer); player.pause(); duck(false); S.pausedForUser = true; armPauseGuard(); ui.phase('listening', 'Go ahead'); } }
 }
 function handleFinal(t) {
   ui.transcript(t, false); if (!t) return;
   if (isEcho(t)) { if (S.pausedForUser) falseAlarm(); return; }
   if (busy()) { if (isFiller(t)) { if (S.pausedForUser) falseAlarm(); S.holdForFinal = false; return; } commitInterrupt(t); return; }
   sendTurn(t, 'voice');
+}
+function talkNow() {  // 10-28: tap the orb (or Space) while it talks = "let me speak": stop the voice now and listen; the mic comes on if it was off
+  clearTimeout(S.resumeTimer); endBeat(); player.pause(); duck(false); S.pausedForUser = true; S.holdForFinal = true; armPauseGuard(); ui.interrupt(); ui.phase('listening', 'Go ahead');
+  if (!S.micOn) setMic(true);
 }
 function commitInterrupt(t) {  // standards 2 and 4: tell the server where we were, let the policy decide how to continue
   clearTimeout(S.resumeTimer); clearTimeout(S.pauseGuard); S.holdForFinal = false; S.pausedForUser = false; ui.interrupt();
@@ -290,6 +344,7 @@ async function setMic(on) {
     audioSession(true);
     try { await vad.start(); } catch (e) { audioSession(false); ui.note('Mic unavailable: ' + e.message); ui.error('No microphone here (' + e.message + '). Type instead.'); return; }
     const ok = startRecog(); S.micOn = true; micButton(ok ? 'Listening' : 'Mic level only'); if (!busy()) ui.phase('listening', 'Listening');
+    detectHeadphones();
     sendWelcome();  // a returning renter hears "Welcome back…" as soon as the mic is on (the click lets the page play sound)
   } else { stopRecog(); vad.stop(); audioSession(false); S.micOn = false; micButton(null); if (!busy()) ui.phase('idle', 'Ready'); }
 }
@@ -297,10 +352,40 @@ function micButton(label) {  // label = mic on; null = off
   el.mic.classList.toggle('on', !!label); el.mic.setAttribute('aria-pressed', String(!!label)); el.micLabel.textContent = label || 'Talk'; el.meter.hidden = !label;
 }
 
+async function detectHeadphones() {  // 10-28: tick Headphones by itself when the output (or the mic) is clearly a headset; the renter's own click wins
+  if (S.headphonesTouched || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const out = devs.filter((d) => d.kind === 'audiooutput'), def = out.find((d) => d.deviceId === 'default') || out[0];
+    const track = vad.stream && vad.stream.getAudioTracks()[0];
+    const label = `${(def && def.label) || ''} | ${(track && track.label) || ''}`;
+    const hp = /airpods|headphone|headset|earbud|earphone|\bbuds\b|beats|bose|wh-1000|wf-1000|jabra|sennheiser|plantronics|\bpoly\b|bluetooth/i.test(label) && !/built-in|speaker|macbook/i.test((def && def.label) || '');
+    if (hp !== el.headphones.checked) { el.headphones.checked = hp; ui.note(hp ? 'Headphones on: interrupt any time' : ''); }
+  } catch (e) {}
+}
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', () => { if (S.micOn) detectHeadphones(); });
+el.headphones.addEventListener('change', () => { S.headphonesTouched = true; });
+
 /* ---------------- controls ---------------- */
-el.mic.onclick = () => setMic(!S.micOn);
+el.mic.onclick = () => { if (busy() && !S.pausedForUser) { talkNow(); return; } setMic(!S.micOn); };
+document.addEventListener('keydown', (e) => {  // Space = tap the orb (not while typing, not on a focused button)
+  if (e.code !== 'Space' || e.repeat || !busy() || S.pausedForUser) return;
+  const t = e.target; if (t && (t.closest('input, textarea, button, select, [contenteditable="true"]'))) return;
+  e.preventDefault(); talkNow();
+});
+document.addEventListener('click', (e) => {  // quick replies under the box (ui-notion.js): same as saying it
+  const b = e.target.closest('[data-say]'); if (!b) return;
+  e.preventDefault();
+  const t = b.dataset.say;
+  if (t === '__pause') { stopAll('Paused'); return; }
+  if (busy()) commitInterrupt(t); else sendTurn(t, 'text');
+});
 $('#composer').onsubmit = (e) => { e.preventDefault(); const t = el.text.value.trim(); if (!t) return; el.text.value = ''; if (busy()) commitInterrupt(t); else sendTurn(t, 'text'); };
-function stopAll(label) { S.gen++; if (S.ac) S.ac.abort(); clearTimeout(S.pauseGuard); player.stop(); S.timeline = []; S.streamOpen = false; S.playing = false; S.currentSay = null; S.pausedForUser = false; S.lastBusy = null; ui.phase('paused', label || 'Paused'); }
+function stopAll(label) {
+  // 10-28: remember where we stopped; the next thing said or tapped carries it, so "continue" picks up here instead of searching again
+  if (S.playing || S.currentSay || S.timeline.length || S.beatDone) S.stoppedAt = { active: true, spoken_idx: S.spokenIdx, listing_id: S.currentListing, cut_sentence: S.currentSay ? S.currentSay.text : null };
+  S.gen++; if (S.ac) S.ac.abort(); clearTimeout(S.pauseGuard); endBeat(); duck(false); player.stop(); S.timeline = []; S.streamOpen = false; S.playing = false; S.currentSay = null; S.pausedForUser = false; S.lastBusy = null; ui.phase('paused', label || 'Paused');
+}
 el.stop.onclick = () => stopAll('Paused');
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') stopAll('Paused'); });
 $('#reset').onclick = async () => { stopAll('New session'); try { await fetch('/api/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: S.session }) }); } catch (e) {} location.reload(); };

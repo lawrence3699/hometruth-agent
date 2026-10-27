@@ -137,6 +137,15 @@ section[id],div[id].nt-anchor{scroll-margin-top:84px}
 .nt-dock .nt-composer{box-shadow:0 0 0 1px var(--line),rgba(15,15,15,.1) 0 3px 6px,rgba(15,15,15,.14) 0 12px 32px}
 .nt-dock-row{display:flex;justify-content:center;gap:4px;margin-top:6px}
 .nt-dock-row:empty{display:none}
+/* 10-28 quick replies under the docked box: same as saying it (app.js); Continue only while paused, Pause only while not */
+.nt-dock-row[hidden]{display:none}
+.nt-dock #quick{flex-wrap:wrap;gap:6px;margin-top:8px}
+.nt-qr{height:28px;padding:0 11px;border:0;border-radius:999px;background:var(--bg);box-shadow:0 0 0 1px var(--line),rgba(15,15,15,.06) 0 2px 6px;font:500 13px/20px var(--font);color:var(--ink-5);cursor:pointer;white-space:nowrap;transition:background .15s,color .15s,transform .2s var(--spring)}
+.nt-qr:hover{background:var(--bg-2);color:var(--ink)}
+.nt-qr:active{transform:scale(.95)}
+.nt-qr:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+html:not([data-phase=paused]) .nt-qr-cont,html[data-phase=paused] .nt-qr-pause{display:none}
+html[data-phase=paused] .nt-qr-cont{background:var(--blue);color:#fff;box-shadow:none}
 
 /* ---------- the product window: the live workspace (notion.com hero mock, made real) ---------- */
 .nt-ws{position:relative;margin:104px auto 0}

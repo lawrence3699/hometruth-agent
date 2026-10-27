@@ -13,7 +13,7 @@ from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as Futur
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 import beliefs
 import inbox
@@ -45,6 +45,13 @@ FENGSHUI = ["K1", "K2", "K3", "K4"]  # 文化偏好核对包（docs/01 R-H0）�
 MAX_ASK_ROUNDS = 2
 ASK_PER_ROUND = 2
 TOP_N = 3
+BEAT_MS = 1500  # 10-28 简短播报：每讲完一套停一下（beat 事件），外放的人能插上话；没人说话就接着讲
+
+
+def tour_mode() -> str:
+    """VOICE_TOUR=brief（默认，docs/12：每套三句，说 tell me more 再展开）或 full（10-27 前的逐格讲法）。"""
+    m = os.environ.get("VOICE_TOUR", "brief").strip().lower()
+    return m if m in ("brief", "full") else "brief"
 
 PLACES = [
     ("central", "Central Station", "central"), ("unsw", "UNSW", "unsw"), ("cbd", "the CBD", "cbd"), ("city", "the CBD", "cbd"),
@@ -53,6 +60,13 @@ PLACES = [
     ("kingsford", "Kingsford", None), ("zetland", "Zetland", None), ("mascot", "Mascot", None), ("haymarket", "Haymarket", None),
     ("surry hills", "Surry Hills", None), ("bondi junction", "Bondi Junction", None), ("north sydney", "North Sydney", None),
     ("macquarie park", "Macquarie Park", None), ("parramatta", "Parramatta", None), ("chatswood", "Chatswood", None),
+]
+ANCHOR_ALIASES = [  # 10-28：语音识别常见的拼法 / 口语叫法 → PLACES 里的标准名
+    (r"\byou and (?:s ?w|south wales)\b|\bu ?n ?s ?w\b|\bu\.n\.s\.w\b|\bnew south wales uni(?:versity)?\b|\buni(?:versity)? of new south wales\b|\bkensington campus\b", "UNSW"),
+    (r"\bcentral (?:train )?station\b|\bcentral\b", "Central Station"),
+    (r"\b(?:sydney )?c\.?b\.?d\.?\b|\bthe city\b|\bcity cent(?:re|er)\b", "the CBD"),
+    (r"\bu ?t ?s\b|\buni(?:versity)? of technology\b", "UTS"),
+    (r"\bsydney uni(?:versity)?\b|\bu ?syd\b|\buni(?:versity)? of sydney\b", "Sydney Uni"),
 ]
 ANCHOR_KEY = {label: key for _, label, key in PLACES}
 WORDNUM = {"studio": 0, "one": 1, "two": 2, "three": 3, "four": 4, "1": 1, "2": 2, "3": 3, "4": 4, "a": 1, "single": 1}
@@ -93,6 +107,8 @@ def parse_budget(t: str) -> Optional[int]:
         r"\b(?:under|below|max(?:imum)?|up to|budget(?: of| is)?|less than|around|about|no more than|within|cap(?: of)?)\s*\$?\s?(\d{3,4})\b",
         r"\b(\d{3,4})\s*(?:a|per|/)\s*week\b",
         r"\b(\d{3,4})\s*pw\b",
+        r"\b(\d{3,4})\s*(?:max(?:imum)?|tops|or (?:less|under|below)|at (?:the )?most)\b",  # 10-28 "can we make it 800 max?"
+        r"\b(?:make it|make that|change it to|bring it down to|drop it to|raise it to|up it to|go up to|go down to)\s*\$?\s?(\d{3,4})\b",
     ]
     for p in pats:
         m = re.search(p, t)
@@ -109,6 +125,8 @@ def parse_bedrooms(t: str) -> Optional[int]:
         return WORDNUM[m.group(1)]
     if re.search(r"\bstudio\b", t):
         return 0
+    if re.search(r"\b(just me|only me|just myself|on my own|by myself|living alone|for one person|single person)\b", t):
+        return 1  # 10-28 "it's just me"：一个人住按一房算
     return None
 
 
@@ -116,7 +134,13 @@ def parse_anchor(t: str) -> Optional[str]:
     for key, label, _ in PLACES:
         if re.search(r"\b" + re.escape(key) + r"\b", t):
             return label
+    for pat, label in ANCHOR_ALIASES:
+        if re.search(pat, t):
+            return label
     return None
+
+
+VAGUE_PLACE = r"\b(the beach|beaches|near the water|by the sea|the coast|the uni|uni|university|work|the office|my office|the station|a station)\b"
 
 
 def parse_move_in(t: str) -> Optional[dict]:
@@ -258,7 +282,8 @@ PACK_LABELS = {"K1": "Numbers (no 4)", "K2": "No through-line", "K3": "Doors cle
 EXTRA_GROUND = {"C1": r"air|\ba\.?c\b|cool|split|ducted|heat", "C2": r"furnish", "C3": r"stove|cooktop|\bhob\b|induction|burner", "A6": r"bill|utilit|water|electric|internet|included",
                 "E4": r"quiet|nois|peace", "E2": r"\bsun|light|north|bright"}
 FIELD_DIM = {"budget": "A1", "bedrooms": "B1", "anchor": "G1", "move_in": "A4", "pets": "J1"}
-STOP = {"the", "near", "close", "to", "in", "at", "of", "and", "station", "uni", "university", "my", "our", "work", "a", "an", "street"}
+STOP = {"the", "near", "close", "to", "in", "at", "of", "and", "station", "uni", "university", "my", "our", "work", "a", "an", "street",
+        "beach", "beaches", "coast", "water", "sea", "office"}  # 10-28：模型把 "near the beach" 填成 Bondi Beach，只靠 beach 这个词不算原话里有
 NEEDS_PROMPT = """HOMETRUTH_NEEDS_V1
 You turn one thing a renter said into JSON for a Sydney rental search. Today is {today}.
 Reply with one JSON object and nothing else. Include only the keys this utterance actually gives; leave every other key out (a missing key means null, missing extras means none). Keys and shapes:
@@ -314,7 +339,8 @@ def _grounded_anchor(anchor: str, t: str) -> bool:
     words = [w for w in re.findall(r"[a-z]+", anchor.lower()) if len(w) >= 3 and w not in STOP]
     if any(re.search(r"\b" + re.escape(w), t) for w in words):
         return True
-    return any(label == anchor and re.search(r"\b" + re.escape(key) + r"\b", t) for key, label, _ in PLACES)
+    return any(label == anchor and re.search(r"\b" + re.escape(key) + r"\b", t) for key, label, _ in PLACES) or \
+        any(label == anchor and re.search(pat, t) for pat, label in ANCHOR_ALIASES)
 
 
 def validate_llm_fields(obj: dict, text: str, pending: List[str]) -> Tuple[dict, Dict[str, str]]:
@@ -538,6 +564,25 @@ def polish_llm(sentence: str, fields: List[str]) -> str:
 
 def missing_required(profile: dict) -> List[str]:
     return [dim for dim, key in REQUIRED if profile[key] is None]
+
+
+# 10-28（docs/12 模拟顾客 P18）：反问时说 "I don't know when yet"，以前下一轮还接着问 "when do you need to move in?"。说过不知道的必填项不再问，
+# 开查时照常假设并说出口（"any move-in date"）。
+DONT_KNOW = {"A4": r"\b(?:(?:don'?t|do not) know|not sure|no idea|unsure|haven'?t decided|undecided)\b[^.?!]*\bwhen\b|\bwhenever\b|\bflexible\b|\bno rush\b|\bany ?time\b",
+             "G1": r"\b(?:(?:don'?t|do not) know|not sure|no idea|unsure)\b[^.?!]*\bwhere\b|\banywhere\b",
+             "A1": r"\b(?:(?:don'?t|do not) know|not sure|no idea|unsure)\b[^.?!]*\b(?:budget|how much|spend)\b",
+             "B1": r"\b(?:(?:don'?t|do not) know|not sure|no idea|unsure)\b[^.?!]*\b(?:bedrooms?|rooms?|how many)\b",
+             "J1": r"\b(?:(?:don'?t|do not) know|not sure|no idea|unsure)\b[^.?!]*\bpets?\b"}
+
+
+def sentences(text: str) -> List[str]:
+    """一段话拆成一句一个 say（10-28，docs/12：句与句之间能打断，最长一句不超过 8 秒左右）。"""
+    return [x for x in re.split(r"(?<=[.?!])\s+(?=[A-Z0-9])", (text or "").strip()) if x]
+
+
+def declined_fields(text: str, fields: List[str]) -> List[str]:
+    t = text.lower()
+    return [f for f in fields if f in DONT_KNOW and re.search(DONT_KNOW[f], t)]
 
 
 # ---------------------------------------------------------------- 材料分段 + 下一步（10-27，docs/01 同一口径）
@@ -893,11 +938,83 @@ def viewing_check(cells: Dict[str, dict]) -> Optional[Tuple[str, dict]]:
     return cands[0] if cands else None
 
 
-def build_tour(ranked: List[dict], profile: dict, excluded: int, narration: Optional[Dict[int, Future]] = None) -> List[dict]:
-    """导览计划。narration 是 narrator.start_tour 发出去的请求（每套房一个 Future）：每句话先放模板，附上 (Future, 键)，
-    讲到那句时（_emit_plan）再取模型写的版本，取不到就照模板说。"""
+def _full_events(plan: List[dict], say, i: int, n: int, item: dict, profile: dict, fut: Optional[Future] = None) -> None:
+    """一套房的逐格讲法（10-27 前的默认；现在是 full 模式和 "tell me more"）。"""
+    L, cells = item["listing"], item["cells"]
+    plan.append({"type": "card", "listing": card_payload(L, cells, i + 1)})
+    say(phraser.intro(i, L), f"L{i}", fut, "intro")
+    for d in TOUR_ORDER:
+        if d in cells:
+            c = cells[d]
+            plan.append({"type": "highlight", "listing_id": L["id"], "dim": d, "status": c["status"]})
+            plan.append({"type": "evidence", "listing_id": L["id"], "dim": d, "label": c["label"], "status": c["status"], "items": c["evidence"]})
+            say(phraser.cell_sentence(d, c, L, profile), f"L{i}.{d}", fut, f"cells.{d}")
+    say(phraser.special(L), f"L{i}.special", fut, "special")
+    bq = best_question(cells)
+    if bq:
+        plan.append({"type": "highlight", "listing_id": L["id"], "dim": bq[0], "status": bq[1]["status"], "question": True})
+        say(phraser.best_question(bq[0], bq[1], profile), f"L{i}.question", fut, "question")
+    else:  # 没有可问中介的：最值得去看房核的那格说一句 "worth checking at the viewing"
+        vc = viewing_check(cells)
+        if vc:
+            plan.append({"type": "highlight", "listing_id": L["id"], "dim": vc[0], "status": vc[1]["status"], "viewing": True})
+            say(phraser.viewing_check(vc[0], vc[1]), f"L{i}.viewing", fut, "viewing")
+
+
+BRIEF_ORDER = {"conflict": 0, "unknown": 1, "inferred": 2}
+
+
+def brief_open(cells: Dict[str, dict]) -> Tuple[List[Tuple[str, dict]], List[Tuple[str, dict]]]:
+    """还没落实的格子：(租客要的, 没问但照片说了的)，最要紧的在前：冲突 > 未知 > 推断，硬条件先。"""
+    cands = [(d, c) for d, c in cells.items() if d != "H1" and c["status"] in BRIEF_ORDER
+             and not (d == "G1" and c["status"] == "inferred")]  # 估算的通勤：第一句已经说了 "about 24 minutes"
+    cands.sort(key=lambda dc: (not dc[1]["hard"], BRIEF_ORDER[dc[1]["status"]], TOUR_ORDER.index(dc[0]) if dc[0] in TOUR_ORDER else 99))
+    return [x for x in cands if not x[1].get("notable")], [x for x in cands if x[1].get("notable")]
+
+
+def _brief_events(plan: List[dict], say, i: int, item: dict, profile: dict, asked_q: Dict[str, int], variety: bool = False) -> None:
+    """一套房三句（docs/12）：地址 + 租金 + 通勤；最多两件没落实的（全对就 checks out）；最该问中介的一句（前面问过同样的就说 same question）。"""
+    L, cells = item["listing"], item["cells"]
+    plan.append({"type": "card", "listing": card_payload(L, cells, i + 1)})
+    say(phraser.brief_intro(i, L, cells, profile, variety), f"L{i}")
+    asked, notable = brief_open(cells)
+    told = asked[:2] if asked else notable[:1]
+    for d, c in told:
+        plan.append({"type": "highlight", "listing_id": L["id"], "dim": d, "status": c["status"]})
+        plan.append({"type": "evidence", "listing_id": L["id"], "dim": d, "label": c["label"], "status": c["status"], "items": c["evidence"]})
+    sp = phraser.short_special(L)
+    if sp and (re.search(r"\d|minute", sp) or (profile.get("anchor") and profile["anchor"].lower() in sp.lower())):
+        sp = ""  # 通勤已经在第一句里了
+    verdict = phraser.brief_verdict([phraser.caveat(d, c) for d, c in asked[:2]], [] if asked else [phraser.caveat(d, c) for d, c in notable[:1]], sp, variety)
+    if asked_q.get("said:" + verdict):  # 和前面一套一字不差：换个说法，不原样重复（asked_q 里 said: 开头的键记说过的句子）
+        verdict = phraser.verdict_again([d for d, _ in asked[:2]])
+    asked_q["said:" + verdict] = 1
+    say(verdict, f"L{i}.brief")
+    bq = best_question(cells)
+    if bq:
+        plan.append({"type": "highlight", "listing_id": L["id"], "dim": bq[0], "status": bq[1]["status"], "question": True})
+        say(phraser.brief_question(bq[0], bq[1], profile, L, asked_q.get(bq[0], 0), variety), f"L{i}.question")
+        asked_q[bq[0]] = asked_q.get(bq[0], 0) + 1
+    else:
+        vc = viewing_check(cells)
+        if vc:
+            plan.append({"type": "highlight", "listing_id": L["id"], "dim": vc[0], "status": vc[1]["status"], "viewing": True})
+            say(phraser.brief_viewing(vc[0], vc[1]), f"L{i}.viewing")
+
+
+def _headline_events(plan: List[dict], say, i: int, item: dict, profile: dict) -> None:
+    L, cells = item["listing"], item["cells"]
+    plan.append({"type": "card", "listing": card_payload(L, cells, i + 1)})
+    say(phraser.headline(i, L, cells, profile), f"L{i}")
+
+
+def build_tour(ranked: List[dict], profile: dict, excluded: int, narration: Optional[Dict[int, Future]] = None, mode: str = "full",
+               start_idx: int = 0, only: Optional[Set[str]] = None, variety: bool = False) -> List[dict]:
+    """导览计划。mode：full = 逐格讲（narration 是 narrator.start_tour 发出去的请求，每套房一个 Future：每句先放模板，附上 (Future, 键)，
+    讲到那句时 _emit_plan 再取模型写的版本）；brief = 每套三句、套与套之间一个 beat（docs/12）；headlines = 每套一句。
+    start_idx：句子编号从几开始（一个会话里的编号不重复，客户端报回来的旧编号不会对上新计划的另一句）。only：只讲这几套（改需求后没听过的）。"""
     plan: List[dict] = []
-    idx = [0]
+    idx = [start_idx]
 
     def say(text: str, step: str, fut: Optional[Future] = None, key: Optional[str] = None) -> None:
         if not text:
@@ -910,31 +1027,31 @@ def build_tour(ranked: List[dict], profile: dict, excluded: int, narration: Opti
 
     shown = ranked[:TOP_N]
     legal_pending = any(it["cells"]["H1"]["status"] == "unknown" for it in shown)
+    asked_q: Dict[str, int] = {}  # 同一个问题前面问过几次（第二次 "same question"，第三次换个说法）
+    told = 0
     for i, item in enumerate(shown):
-        L, cells = item["listing"], item["cells"]
-        fut = (narration or {}).get(i)
-        plan.append({"type": "card", "listing": card_payload(L, cells, i + 1)})
-        say(phraser.intro(i, L), f"L{i}", fut, "intro")
-        for d in TOUR_ORDER:
-            if d in cells:
-                c = cells[d]
-                plan.append({"type": "highlight", "listing_id": L["id"], "dim": d, "status": c["status"]})
-                plan.append({"type": "evidence", "listing_id": L["id"], "dim": d, "label": c["label"], "status": c["status"], "items": c["evidence"]})
-                say(phraser.cell_sentence(d, c, L, profile), f"L{i}.{d}", fut, f"cells.{d}")
-        say(phraser.special(L), f"L{i}.special", fut, "special")
-        bq = best_question(cells)
-        if bq:
-            plan.append({"type": "highlight", "listing_id": L["id"], "dim": bq[0], "status": bq[1]["status"], "question": True})
-            say(phraser.best_question(bq[0], bq[1], profile), f"L{i}.question", fut, "question")
-        else:  # 没有可问中介的：最值得去看房核的那格说一句 "worth checking at the viewing"
-            vc = viewing_check(cells)
-            if vc:
-                plan.append({"type": "highlight", "listing_id": L["id"], "dim": vc[0], "status": vc[1]["status"], "viewing": True})
-                say(phraser.viewing_check(vc[0], vc[1]), f"L{i}.viewing", fut, "viewing")
-        if i < len(shown) - 1:
-            say(phraser.transition(i + 1, len(shown)), f"L{i}.next", fut, "next")
-    last = (narration or {}).get(len(shown) - 1) if shown else None
-    say(phraser.wrap(len(shown), excluded, legal_pending), "wrap", last, "wrap")
+        if only is not None and item["listing"]["id"] not in only:
+            bq = best_question(item["cells"])
+            if bq:
+                asked_q[bq[0]] = asked_q.get(bq[0], 0) + 1  # 这套之前讲过：它的问题算问过了
+            continue
+        if mode == "full":
+            _full_events(plan, say, i, len(shown), item, profile, (narration or {}).get(i))
+            if i < len(shown) - 1:
+                say(phraser.transition(i + 1, len(shown)), f"L{i}.next", (narration or {}).get(i), "next")
+            continue
+        if told:
+            plan.append({"type": "beat", "ms": BEAT_MS})
+        told += 1
+        if mode == "headlines":
+            _headline_events(plan, say, i, item, profile)
+        else:
+            _brief_events(plan, say, i, item, profile, asked_q, variety)
+    if mode == "full":
+        last = (narration or {}).get(len(shown) - 1) if shown else None
+        say(phraser.wrap(len(shown), excluded, legal_pending), "wrap", last, "wrap")
+    elif shown:
+        say(phraser.brief_wrap(len(shown), legal_pending), "wrap")
     return plan
 
 
@@ -943,43 +1060,181 @@ def narration_ready() -> bool:
 
 
 # ---------------------------------------------------------------- 打断分类与问题回答
-def classify(text: str) -> str:
+# 10-28（docs/12）：真人插话的说法。先剥掉开头的语气词（wait, / sorry, / oh and …），只有整句就是命令才算 stop / next / continue
+# （"Wait, does that one allow cats?" 是在问问题；"Is the next one cheaper?" 是在问下一套）；带问号的改需求（"can we make it 800 max?"）算改需求。
+MARKERS = r"(?:oh|um+|uh+|erm?|ah|okay|ok|so|well|hmm+|hey|right|sorry|wait|hang on|hold on|actually|no|yeah|yes|yep|look|listen|and|but|please)"
+STOP_BARE = r"(stop|pause|wait|hold on|hang on|wait a (sec|second|moment|minute)|one (sec|second|moment)|just a (sec|second|moment)|that'?s enough|enough|" \
+            r"be quiet|quiet|shush|stop talking|stop there|pause there|pause it|stop it)"
+NEXT_BARE = r"(next|next one|the next one|skip|skip (it|this|that)( one)?|move on|on to the next( one)?|go on to the next( one)?|next place|next please|" \
+            r"skip ahead|keep going to the next( one)?)"
+RESUME_BARE = r"(continue|go on|carry on|resume|keep going|go ahead|you can continue|sure go on|yes go on|okay go on|let'?s continue|continue then)"
+REPEAT_RE = re.compile(r"\b(say (that|it) again|repeat (that|it|the last (bit|part|one|sentence))|what (was that|did you (just )?say)|"
+                       r"(didn'?t|did not|couldn'?t) (catch|hear|get) (that|it|what you said)|come again|pardon( me)?|one more time)\b")
+QUESTIONS_RE = re.compile(r"\b((draft|write|list|give me|send( me)?|read( me)?|show( me)?|what are|make|get) (me )?(the |my |those |some |all the |your )?(agent |list of )?questions"
+                          r"|questions (for|to) (the )?agents?|what (should|do) i ask|what to ask)\b")
+SHORTER_RE = re.compile(r"\b(short(er)? version|shorter|too long|(talk|go|speak) (faster|quicker)|speed (it )?up|just the (highlights|headlines|key (points|bits)|main (points|bits)|gist|basics)|"
+                        r"get to the point|sum (it|them|that) up|summari[sz]e|quick(er)? version|less detail|keep it (short|brief)|in short|briefly)\b")
+DETAIL_RE = re.compile(r"\b(tell me more|more (about|on|detail|details|info|information)|full (details|rundown|picture|version)|all the details|in (more )?detail|"
+                       r"details (on|about|for)|everything about|walk me through (it|that|this|the \w+( one)?)|go through (it|that|this|the \w+( one)?))\b")
+RANK_RE = re.compile(r"\b((which|what) (one )?(would you|do you|should i) (pick|choose|recommend|go for|take)|(your|the) (top )?(pick|recommendation)|which is (the )?best( one)?|which one is best)\b")
+COMPARE_RE = re.compile(r"\b(compare|comparison|difference|differ|versus|vs\.?|side by side|stack up)\b|\bwhich (one )?(is|has|'s|would be) (the )?"
+                        r"(cheaper|cheapest|closer|closest|bigger|biggest|nicer|quieter|newer|nearest|nearer)\b|\b(cheaper|closer|bigger|nicer|quieter|nearer) than\b")
+REJECT_RE = re.compile(r"\b(too (far|expensive|pricey|dear|small|tiny|big|noisy|old|much|cramped|dark)|(don'?t|do not|didn'?t) (like|want|love) (it|that|this|that one|this one|the \w+ one|that place|this place)|"
+                       r"not (that|this) one|not for me|(rule|cross|strike|knock) (it|that|this)( one)? (out|off)|drop (it|that|this)( one)?|(get rid of|remove) (it|that|this)( one)?|"
+                       r"no to (that|this)|hate (it|that|this)|not interested)\b")
+JUMP_RE = re.compile(r"\b(go back( to)?|back to (the )?(first|second|third|last|previous|top)|(the )?(first|second|third|previous|last|top) one again|previous (one|place)|"
+                     r"tell me about (the )?(first|second|third|last|next|top)( one| place)?|what about (the )?(first|second|third|last|other|top)( one| place)?|"
+                     r"(skip|jump) to (the )?(first|second|third|last)( one)?)\b")
+AGENT_RE = re.compile(r"\b(agent|landlord|they|owner)\b.*\b(said|says|replied|confirmed|wrote|told)\b|living room only|pets? (are|is) (fine|ok|okay|allowed)")
+QUESTION_START = re.compile(r"^(is|are|does|do|did|can|could|how|what|which|where|when|why|who|will|would|was|were|has|have|tell me|show me)\b")
+ABOUT_PLACE = re.compile(r"^(is|are|does|do|has|have|was|will|did|can i|could i)\s+(it|this|that|they|there|the\s+\w+|this one|that one)\b")
+UPDATE_CUE = re.compile(r"\b(make it|make that|can we|could we|can you (also )?(look|search|find|filter)|could you (also )?(look|search|find|filter)|let'?s|change|instead|"
+                        r"what about|how about|also|as well|too|actually|i (also )?(need|want|have|'ve got|got|own|prefer)|i'?d (like|prefer|rather))\b")
+
+
+def _strip_markers(t: str) -> str:
+    """开头的语气词剥掉（"wait, does it…" → "does it…"；"oh and it needs…" → "it needs…"）。"""
+    t = t.strip()
+    while True:
+        m = re.match(r"^" + MARKERS + r"\b[\s,.!?;:-]*", t)
+        if not m or not m.end():
+            return t
+        t = t[m.end():].strip()
+
+
+def intent(text: str) -> str:
+    """一句插话 / 追问是什么意思：resume / stop / next / repeat / questions / shorter / detail / rank / compare / agent_reply / reject / jump /
+    update / question / decline / unclear。"question?" = 规则只是猜它是个问题（没有问句形式），模型可用时 Session 再问一次模型。"""
     t = text.lower().strip()
-    words = re.findall(r"[a-z']+", t)
+    words = re.findall(r"[a-z0-9']+", t)
     if not words or all(w in FILLERS for w in words):
         return "resume"
-    if re.search(r"\b(skip|next one|next|move on)\b", t):
-        return "next"
-    if re.search(r"\b(stop|pause|hold on|hang on|wait|that's enough|enough)\b", t):
-        return "stop"
-    if re.search(r"\b(continue|go on|carry on|resume|keep going|go ahead)\b", t):
+    if re.fullmatch(r"\W*(no|nah|nope)(,? (thanks|thank you|that'?s (all|it|fine)|i'?m (good|fine|okay|ok)|all good|need))?\W*", t):
+        return "decline"
+    core = _strip_markers(t)
+    bare = re.sub(r"[\s,.!?]*\b(please|thanks|thank you|now|then|mate|for a sec(ond)?)\b[\s,.!?]*$", "", core).strip(" ,.!?;:")
+    if not bare:
+        if re.search(r"\b(wait|hang on|hold on)\b", t):
+            return "stop"
+        if re.search(r"\b(sorry|pardon)\b", t):
+            return "repeat"
         return "resume"
-    if re.search(r"\b(agent|landlord|they|owner)\b.*\b(said|says|replied|confirmed|wrote|told)\b|living room only|pets? (are|is) (fine|ok|okay|allowed)", t):
+    if re.fullmatch(STOP_BARE, bare):
+        return "stop"
+    if re.fullmatch(NEXT_BARE, bare):
+        return "next"
+    if re.fullmatch(RESUME_BARE, bare):
+        return "resume"
+    if REPEAT_RE.search(t) or bare in ("what", "sorry", "pardon", "huh", "again", "say again", "what was that"):
+        return "repeat"
+    if QUESTIONS_RE.search(t):
+        return "questions"
+    if SHORTER_RE.search(t):
+        return "shorter"
+    if DETAIL_RE.search(t):
+        return "detail"
+    if RANK_RE.search(t):
+        return "rank"
+    if COMPARE_RE.search(t):
+        return "compare"
+    if AGENT_RE.search(t):
         return "agent_reply"
-    if re.search(r"^(is|are|does|do|did|can|could|how|what|which|where|when|why|who|will|would|was|were|has|have|tell me|show me)\b", t) or "?" in t:
-        return "question"
-    probe = new_profile()
-    if parse_into(probe, t):
+    if REJECT_RE.search(t):
+        return "reject"
+    if JUMP_RE.search(t):
+        return "jump"
+    fields = parse_into(new_profile(), t)
+    qform = bool(QUESTION_START.search(core)) or "?" in t
+    if fields and (not qform or (UPDATE_CUE.search(t) and not ABOUT_PLACE.search(core))):
         return "update"
-    return "question" if len(words) > 2 else "unclear"
+    if qform:
+        return "question"
+    return "question?" if len(words) > 2 else "unclear"
+
+
+def classify(text: str) -> str:
+    """旧名字（Pipecat 版、README 里叫它）：intent 的简化版，猜的问题也算问题。"""
+    k = intent(text)
+    return "question" if k == "question?" else k
+
+
+INTENT_PROMPT = """HOMETRUTH_INTENT_V1
+A renter is talking to a voice assistant that walks them through a shortlist of rental listings (first, second, third). Say what the renter means.
+Intents: question (asks about a listing), update (changes or adds a need: budget, bedrooms, commute place, move-in date, pets, furnished, air con, bills, quiet, sunlight), next (skip to the next listing), stop (pause), resume (carry on), repeat (say the last thing again), shorter (wants less detail), detail (wants more detail on one listing), jump (go to a specific listing), reject (doesn't want a listing), compare (compare listings), questions (wants the list of questions for the agents), rank (which one to pick), agent_reply (passing on what an agent said), decline (no thanks), unclear.
+Reply with one JSON object and nothing else: {"intent": "<one intent>", "place": "first|second|third|current|next|none"}"""
+INTENTS = {"question", "update", "next", "stop", "resume", "repeat", "shorter", "detail", "jump", "reject", "compare", "questions", "rank", "agent_reply", "decline", "unclear"}
+
+
+def intent_llm(text: str, context: str = "") -> Tuple[Optional[str], Optional[str]]:
+    """规则没把握时问模型（2 s 内）：返回 (intent, place)；没模型、超时、答得不对 → (None, None)。"""
+    if llm is None or not needs_llm_ready():
+        return None, None
+    try:
+        res = llm.chat([{"role": "system", "content": INTENT_PROMPT}, {"role": "user", "content": f"Context: {context[:300]}\nRenter: {text[:300]}"}],
+                       task="intent", temperature=0, max_tokens=40, retries=0, timeout=float(os.environ.get("INTENT_LLM_TIMEOUT", "2")))
+    except Exception:  # noqa: BLE001
+        return None, None
+    obj = _json_object(res.text) or {}
+    k = str(obj.get("intent") or "").strip().lower()
+    place = str(obj.get("place") or "").strip().lower()
+    return (k if k in INTENTS else None), (place if place in ("first", "second", "third", "current", "next") else None)
 
 
 def find_listing(text: str, ranked: List[dict], current: Optional[str]) -> Optional[dict]:
+    """话里说的是哪套：街名 > 第几套（first / second / third / last）> 下一套 / 上一套 > 这套（this / that / it）> 正在讲的那套 > 第一套。"""
     t = text.lower()
     for item in ranked:
         street = item["listing"]["street"].lower()
-        name = re.sub(r"^\d+\s+", "", street)
-        if name.split()[0] in t:
+        name = re.sub(r"^\d+[a-z]?\s+", "", street)
+        if name.split() and re.search(r"\b" + re.escape(name.split()[0]) + r"\b", t):
             return item
+    shown = ranked[:TOP_N]
     for word, i in ORDINALS.items():
         if re.search(r"\b" + word + r"\b", t):
-            shown = ranked[:TOP_N]
             if shown:
                 return shown[i if i >= 0 else len(shown) - 1] if (i < len(shown)) else None
+    cur = next((k for k, it in enumerate(shown) if it["listing"]["id"] == current), None)
+    if re.search(r"\b(next|following) (one|place)\b|\bthe next\b", t) and cur is not None and cur + 1 < len(shown):
+        return shown[cur + 1]
+    if re.search(r"\b(previous|last) (one|place)\b|\bthe one before\b", t) and cur is not None and cur > 0 and not re.search(r"\bthe last one\b", t):
+        return shown[cur - 1]
     for item in ranked:
         if item["listing"]["id"] == current:
             return item
     return ranked[0] if ranked else None
+
+
+def listings_in(text: str, shown: List[dict]) -> List[dict]:
+    """话里点名的几套（比较用），按说的顺序。"""
+    t = text.lower()
+    hits: List[Tuple[int, dict]] = []
+    for item in shown:
+        name = re.sub(r"^\d+[a-z]?\s+", "", item["listing"]["street"].lower())
+        m = re.search(r"\b" + re.escape(name.split()[0]) + r"\b", t) if name.split() else None
+        if m:
+            hits.append((m.start(), item))
+    for word, i in ORDINALS.items():
+        for m in re.finditer(r"\b" + word + r"\b", t):
+            j = i if i >= 0 else len(shown) - 1
+            if 0 <= j < len(shown):
+                hits.append((m.start(), shown[j]))
+    out: List[dict] = []
+    for _, it in sorted(hits, key=lambda h: h[0]):
+        if all(o is not it for o in out):
+            out.append(it)
+    return out
+
+
+COMPARATIVE_DIM = [("A1", r"cheap|pric|dear|expensive|rent|cost"), ("G1", r"close|near|far|commute|walk|bus|train|minutes"), ("B1", r"big|small|bedroom|size|space"),
+                   ("E4", r"quiet|noise|noisy"), ("E2", r"sun|light|bright"), ("D1", r"new|modern|old|condition|renovat")]
+
+
+def compare_dim_for(text: str) -> Optional[str]:
+    t = text.lower()
+    for d, pat in COMPARATIVE_DIM:
+        if re.search(pat, t):
+            return d
+    return dim_for(text)
 
 
 def dim_for(text: str) -> Optional[str]:
@@ -1038,6 +1293,7 @@ class Session:
         self.id = sid
         self.profile = new_profile()
         self.asked_rounds = 0
+        self.declined: Set[str] = set()  # 反问时说了不知道的必填项（"I don't know when yet"）：不再问，开查时假设
         self.pending: List[str] = []
         self.plan: List[dict] = []
         self.pos = 0
@@ -1057,6 +1313,11 @@ class Session:
         self.remembered: List[str] = []  # 哪些字段是从记忆预填的、这次还没重说（needs 事件带出去，界面标"上次的"）
         self.greeted = False  # "Welcome back…" 说过没有（开场只说一次：要么机器先开口问，要么租客先说话时顺带说）
         self.awaiting: Optional[str] = None  # 机器先开口问了、还在等回答（"welcome"）；误触发的打断要重问这句而不是开查
+        self.mode = tour_mode()  # brief（默认）/ full；说 "shorter" 之后是 headlines
+        self.rejected: Set[str] = set()  # 租客说不要的房（"too far" / "not that one"），排名里跳过；有租客编号就记进 memory，下次也不推
+        self.idx_seq = 0  # 句子编号一个会话里一直往上数：新计划的编号不会和客户端报回来的旧编号撞上
+        self.emit_from = 0  # 最近一次 _emit_plan 从哪开始：客户端报的编号不在当前计划里（还没听完新计划的第一句）就从这里重讲
+        self.extra_questions: List[str] = []  # 租客问了、我们答不上的（押金、车位…）：列问题清单时带上
         self.lock = threading.Lock()
 
     # ---- 欢迎回来（memory.py）----
@@ -1066,6 +1327,8 @@ class Session:
         self.memory = memory.load(self.renter) if self.renter else None
         if self.renter and not self.overrides:
             self.overrides = beliefs.overrides(self.renter)  # 上次中介说了的，这次还算数（beliefs.py 重放）
+        if self.memory and self.memory.get("rejected"):
+            self.rejected |= {str(x) for x in self.memory["rejected"]}
         if self.memory and prefill and not self.plan and not any(self.profile.get(k) is not None for k in memory.FIELDS) and not self.profile["extras"]:
             self.profile = memory.profile_from(self.memory)
             self.remembered = memory.remembered_fields(self.profile)
@@ -1081,10 +1344,10 @@ class Session:
         self.awaiting = "welcome"
         yield {"type": "state", "phase": "thinking", "label": "Welcome back"}
         yield {"type": "needs", "profile": self._profile_view(), "missing": missing_required(self.profile), "asking": [], **self._parse_view(), **self._needs_memory()}
-        extra, streets = self._welcome_extra()
-        fact = phraser.welcome_question(self.memory.get("summary") or phraser.summary(self.profile), extra)
+        extra, streets = self._welcome_extra(with_open=self.mode == "full")  # 简短播报：还在等的问题到那套房时会问，开场不念
+        fact = phraser.welcome_question(self._welcome_summary(), extra)
         text = fact
-        if self._nar():
+        if self._nar() and self.mode == "full":
             must = [r"welcome|back|last time"] + [re.escape(street_word(s)) for s in streets]  # 离开时到的回复 / 还在等的问题得点到那套房
             text = narrator.line("welcome", fact, context=self._ctx(), required=narrator.nums(fact), question=True, must=must) or fact
         yield {"type": "ask", "fields": [], "text": text}
@@ -1094,7 +1357,12 @@ class Session:
     def _needs_memory(self) -> dict:
         return {"remembered": list(self.remembered)} if self.remembered else {}
 
-    def _welcome_extra(self) -> Tuple[str, List[str]]:
+    def _welcome_summary(self) -> str:
+        if self.mode != "full":  # 简短播报：只点卧室、通勤、预算（10-28 前整段复述要念 20 秒）
+            return phraser.short_summary(self.profile)
+        return self.memory.get("summary") or phraser.summary(self.profile)
+
+    def _welcome_extra(self, with_open: bool = True) -> Tuple[str, List[str]]:
         """开场多说的那句：离开时收件箱到了中介回复（先），不然就是上次还在等中介回答的问题。返回 (句子, 要点名的街名)。"""
         if self.renter:
             streets: List[str] = []
@@ -1104,7 +1372,7 @@ class Session:
                     streets.append(L["street"])
             if streets:
                 return phraser.away_line(streets), streets
-        open_items = [o for o in ((self.memory or {}).get("open") or []) if o.get("street")][:2]
+        open_items = [o for o in ((self.memory or {}).get("open") or []) if o.get("street")][:2] if with_open else []
         if open_items:
             return phraser.open_line(open_items), [o["street"] for o in open_items]
         return "", []
@@ -1137,6 +1405,7 @@ class Session:
         text = (body.get("text") or "").strip()
         inter = body.get("interrupted") or {}
         self.deterministic = bool(body.get("deterministic"))
+        self.last_awaiting = self.awaiting  # 上一句问的是什么（收尾问了 "details on one, or the questions?" 时 "yes" / "the second one" 照它理解）
         if text:
             self.request_text = text
             self.heard = (self.heard + [text])[-3:]
@@ -1153,10 +1422,21 @@ class Session:
         if inter.get("active") and self.plan:
             yield from self._interrupted(text, inter)
             return
+        if self.plan and not self.pending:  # 讲完了 / 停着的时候的追问：和打断同一套处理，只是不用接着讲
+            kind = self._intent(text)
+            yield from self._dispatch(kind, text, live=self.pos < len(self.plan))
+            return
         pending, self.pending = self.pending, []
-        kind = classify(text) if (self.plan and not pending) else "update"
+        if pending and intent(text) == "repeat":  # 反问时 "sorry?"：把问题再问一遍
+            self.pending = pending
+            q = phraser.ask_sentence(pending, vague=self._vague())
+            yield {"type": "ask", "fields": list(pending), "text": q}
+            yield self._said(q, q, expects_answer=True, step="repeat")
+            yield {"type": "done"}
+            return
+        kind = "update"
         thinking_shown = False
-        if kind == "update":  # 说需求、答反问、改需求：过渡句先出声，模型在线程里解析，规则校验兜底
+        if kind == "update":  # 说需求、答反问：过渡句先出声，模型在线程里解析，规则校验兜底
             yield {"type": "state", "phase": "thinking", "label": "Analysing your request"}
             thinking_shown = True
             started = start_needs_llm(text, self.profile, pending) if needs_llm_ready() else None
@@ -1165,25 +1445,8 @@ class Session:
                 changed, self.parse_meta = parse_needs_llm(text, self.profile, pending, started=started)
             else:
                 changed, self.parse_meta = parse_into(self.profile, text, pending), rules_meta()
-        elif kind == "agent_reply" and self.plan:  # 中介说的话不是租客的需求："no pets in that building" 不能把租客的猫抹掉（10-27 KeyError 'J1'）
-            changed = {}
-        else:  # 提问、续播等：和原来一样只用规则
-            changed = parse_into(self.profile, text, pending)
         self._restated(changed)
-        if kind == "agent_reply" and self.plan:
-            yield from self._agent_reply(text)
-            return
-        if kind == "question" and self.plan and not changed:
-            if self._nar():
-                yield self._say(phraser.pick("answer"), step="bridge")  # 模型写答案要 1 s 上下，先出声
-            yield from self._answer(text)
-            yield {"type": "state", "phase": "idle", "label": "Ready"}
-            yield {"type": "done"}
-            return
-        if kind == "resume" and self.plan and self.pos < len(self.plan):
-            yield {"type": "state", "phase": "touring", "label": "Continuing"}
-            yield from self._emit_plan()
-            return
+        self.declined |= set(declined_fields(text, [m for m in missing_required(self.profile) if m not in changed]))
         yield from self._search(changed, thinking_shown=thinking_shown)  # 没开查过时 changed 只给欢迎回来那句用（"this time budget 800"）
 
     # 开查：缺必填就问，否则搜 + 导览
@@ -1191,14 +1454,15 @@ class Session:
         missing = missing_required(self.profile)
         if not thinking_shown:  # 模型解析那条路刚亮过同一个状态，不重复发
             yield {"type": "state", "phase": "thinking", "label": "Analysing your request"}
-        if missing and self.asked_rounds < MAX_ASK_ROUNDS:
-            ask = missing[:ASK_PER_ROUND]
+        to_ask = [m for m in missing if m not in self.declined]
+        if to_ask and self.asked_rounds < MAX_ASK_ROUNDS:
+            ask = to_ask[:ASK_PER_ROUND]
             self.asked_rounds += 1
             self.pending = ask
-            q0 = polish_llm(phraser.ask_sentence(ask), ask)
+            q0 = polish_llm(phraser.ask_sentence(ask, vague=self._vague()), ask)
             q = q0
             yield {"type": "needs", "profile": self._profile_view(), "missing": missing, "asking": ask, **self._parse_view(), **self._needs_memory()}
-            if self._nar():  # 先复述听懂的部分（模板，立刻能说），模型同时把反问写得自然；写坏了就用模板
+            if self._nar() and self.mode == "full":  # 先复述听懂的部分（模板，立刻能说），模型同时把反问写得自然；写坏了就用模板
                 heard = phraser.summary(self.profile)
                 if heard:
                     yield self._say(phraser.heard_sentence(heard, variety=not self.deterministic), step="heard")
@@ -1214,10 +1478,11 @@ class Session:
             return
         yield {"type": "needs", "profile": self._profile_view(), "missing": missing, "assumed": missing, **self._parse_view(), **self._needs_memory()}
         if self.memory and not self.plan:  # 第一次开查、有上次的记忆：欢迎回来那句代替需求复述（机器先开口问过的话只说"same as last time, then"）
-            extra, streets = ("", []) if self.greeted else self._welcome_extra()  # 租客先开口的：离开时到的回复 / 还在等的问题也在这句里提
-            fact = phraser.welcome_search(self.memory.get("summary") or "", changed, greeted=self.greeted, extra=extra)
+            brief = self.mode != "full"
+            extra, streets = ("", []) if self.greeted else self._welcome_extra(with_open=not brief)  # 租客先开口的：离开时到的回复 / 还在等的问题也在这句里提
+            fact = phraser.welcome_search(self.memory.get("summary") or "", changed, greeted=self.greeted, extra=extra, brief=brief)
             text = fact
-            if self._nar():
+            if self._nar() and not brief:
                 vals = set().union(*(narrator.nums(str(v)) for v in changed.values())) if changed else set()
                 text = narrator.line("back", fact, context=self._ctx(), required=vals | narrator.nums(fact), statement=True,
                                      must=[r"welcome|back|last time|same|as before|rest"] + [re.escape(street_word(s)) for s in streets]) or fact  # "back", not "ack": nothing to re-rank on a first search
@@ -1233,6 +1498,10 @@ class Session:
                 text = narrator.line("ack", fact, context=self._ctx(), required=vals, statement=True,
                                      must=r"re-?rank|rank|again|re-?check|look|search|update|redo|re-?run|re-?sort|refresh|adjust|re-?do") or fact
             yield self._said(text, fact, step="update")
+        elif self.mode != "full":  # 简短播报：需求已经在芯片上，不再复述；有假设就说出口，再说"在查"
+            self.heard_said = False
+            for x in sentences(phraser.brief_opening(missing, len(SOURCES), vague=self._vague() if "G1" in missing else None)):
+                yield self._say(x, step="opening")
         else:
             parts = phraser.opening_parts(self.profile, missing, len(SOURCES))
             if self._nar():  # 口语化：先复述（反问前复述过就不再说）、再"让我看看"、再假设 + 开查那句
@@ -1248,40 +1517,46 @@ class Session:
                 yield self._say(part, step="opening")
         yield from self._inbox_now(live=False)  # 离开时到的中介回复（inbox.py）：先翻格、记信念日志，再排名（"…I've folded that in before ranking"）
         yield {"type": "state", "phase": "searching", "label": "Checking sources"}
-        self.ranked, self.excluded = rank(self.profile, self.overrides)
+        self.ranked, self.excluded = self._rank()
         n_pass = len(self.ranked)
         if self.renter:  # 记住这次的需求、前几套和还在等中介答的问题（memory.py）：下次开场 "Welcome back…"
             self.memory = memory.save(self.renter, self.profile, [r["listing"]["id"] for r in self.ranked[:TOP_N]], self.request_text, self.id,
                                       open=open_loops(self.ranked, self.profile)) or self.memory
         nar = None
-        if self._nar() and self.ranked:  # 三套房的台词请求现在就发出去，查来源、说开场的这几秒刚好够模型写
+        if self._nar() and self.ranked and self.mode == "full":  # 三套房的台词请求现在就发出去，查来源、说开场的这几秒刚好够模型写（简短播报用模板，不调模型）
             shown = self.ranked[:TOP_N]
             legal_pending = any(it["cells"]["H1"]["status"] == "unknown" for it in shown)
             nar = narrator.start_tour(shown, self.profile, self.heard, TOUR_ORDER, best_question,
                                       phraser.wrap(len(shown), self.excluded, legal_pending), legal_pending, self.excluded, viewing_check=viewing_check)
-        if zetaris_live.ENABLED:
-            yield from self._sources_zetaris(n_pass)
-        else:  # 没接 Zetaris（单测、没 key 的机器）：模拟查询，事件带 mock，页面照实标
-            for i, src in enumerate(SOURCES):
-                rid = _mock_id()
-                stage = stage_of({"table": src["table"]})  # 来源面板按五段分组（listing / public / agent；viewing、signing 两段永远是空的）
-                yield {"type": "source", "name": src["name"], "label": src["label"], "table": src["table"], "stage": stage, "status": "running", "request_id": rid}
-                time.sleep(random.uniform(0.15, 0.35) if self.quick else random.uniform(0.4, 1.0))
-                yield {"type": "source", "name": src["name"], "label": src["label"], "table": src["table"], "stage": stage, "status": "done", "request_id": rid,
-                       "rows": src["rows"], "ms": random.randint(180, 2400), "mock": True}
-                if i == 1:
-                    yield self._shortlist_line(n_pass)
+        yield from self._sources(n_pass)
         self.quick = True
-        self.plan = build_tour(self.ranked, self.profile, self.excluded, narration=nar)
+        self.plan = self._build(narration=nar)
         self.pos = 0
         yield {"type": "state", "phase": "touring", "label": "Walking you through"}
         yield from self._emit_plan()
 
     def _shortlist_line(self, n_pass: int) -> dict:
+        if self.mode != "full":
+            return self._say(phraser.brief_found(n_pass, min(TOP_N, n_pass)), step="shortlist")
         return self._say(phraser.found(n_pass, min(TOP_N, n_pass), variety=True) if self._nar() else phraser.shortlist(n_pass, min(TOP_N, n_pass)),
                          step="shortlist")
 
-    def _sources_zetaris(self, n_pass: int) -> Iterator[dict]:
+    def _sources(self, n_pass: int, announce: bool = True) -> Iterator[dict]:
+        """查来源（页面左栏逐行打钩）。announce = 查到第二个来源时说"68 fit"那句（改需求重排时不说）。"""
+        if zetaris_live.ENABLED:
+            yield from self._sources_zetaris(n_pass, announce)
+            return
+        for i, src in enumerate(SOURCES):  # 没接 Zetaris（单测、没 key 的机器）：模拟查询，事件带 mock，页面照实标
+            rid = _mock_id()
+            stage = stage_of({"table": src["table"]})  # 来源面板按五段分组（listing / public / agent；viewing、signing 两段永远是空的）
+            yield {"type": "source", "name": src["name"], "label": src["label"], "table": src["table"], "stage": stage, "status": "running", "request_id": rid}
+            time.sleep(random.uniform(0.15, 0.35) if self.quick else random.uniform(0.4, 1.0))
+            yield {"type": "source", "name": src["name"], "label": src["label"], "table": src["table"], "stage": stage, "status": "done", "request_id": rid,
+                   "rows": src["rows"], "ms": random.randint(180, 2400), "mock": True}
+            if i == 1 and announce:
+                yield self._shortlist_line(n_pass)
+
+    def _sources_zetaris(self, n_pass: int, announce: bool = True) -> Iterator[dict]:
         """真查：每个来源一条 SELECT 经 Zetaris（zetaris_live），只查这次的候选房，一起发出去，哪条先答哪行先亮。答完把排名里每条证据
         重新标上返回它的那条查询。超时的来源用它上一次成功的查询（页面标 earlier query），从没查成过的标 failed，证据留 local。"""
         ids = [r["listing"]["id"] for r in self.ranked] or [L["id"] for L in LISTINGS]
@@ -1300,7 +1575,7 @@ class Session:
             else:
                 ev.update(status="failed", error=str(r.get("error") or "")[:160])
             yield ev
-            if i == 1:
+            if i == 1 and announce:
                 yield self._shortlist_line(n_pass)
         for item in self.ranked:
             for c in item["cells"].values():
@@ -1308,6 +1583,7 @@ class Session:
                     e.update(zetaris_live.stamp(e))
 
     def _emit_plan(self) -> Iterator[dict]:
+        self.emit_from = self.pos
         while self.pos < len(self.plan):
             ev = self.plan[self.pos]
             self.pos += 1
@@ -1319,6 +1595,8 @@ class Session:
                 if text and text != ev["text"]:
                     ev["text"], ev["by"] = text, "llm"
             yield ev
+        if self.plan and self.plan[-1].get("step") == "wrap":
+            self.awaiting = "wrap"  # 收尾问了 "details on one, or the questions?"："yes" / "the second one" 照这句理解
         yield {"type": "state", "phase": "idle", "label": "Ready"}
         yield {"type": "done"}
 
@@ -1346,7 +1624,7 @@ class Session:
             yield {"type": "done"}
             return
         if self.awaiting == "welcome" and self.memory:
-            q = cut_sentence or phraser.welcome_question(self.memory.get("summary") or phraser.summary(self.profile))
+            q = cut_sentence or phraser.welcome_question(self._welcome_summary())
             yield {"type": "ask", "fields": [], "text": q}
             yield self._said(q, q, expects_answer=True, step="repeat")
             yield {"type": "done"}
@@ -1359,98 +1637,480 @@ class Session:
         yield {"type": "done"}
 
     def _rewind_to(self, spoken_idx: Optional[int]) -> None:
-        """客户端报告最后一句完整说完的 idx；从它后面接着播（被切断的那句重播）。"""
-        if spoken_idx is None:
-            self.pos = 0
-            return
-        for i, ev in enumerate(self.plan):
-            if ev["type"] == "say" and ev.get("idx") == spoken_idx:
-                self.pos = i + 1
-                return
+        """客户端报告最后一句完整说完的 idx；从它后面接着播（被切断的那句重播）。编号不在当前计划里（新计划还一句没听完）或没有编号：
+        从最近一次开始讲的地方重来（emit_from）。"""
+        if spoken_idx is not None:
+            for i, ev in enumerate(self.plan):
+                if ev["type"] == "say" and ev.get("idx") == spoken_idx:
+                    self.pos = i + 1
+                    return
+        self.pos = min(self.emit_from, len(self.plan))
 
     def _interrupted(self, text: str, inter: dict) -> Iterator[dict]:
         self._rewind_to(inter.get("spoken_idx"))
         if inter.get("listing_id"):
             self.current = inter["listing_id"]
-        kind = classify(text)
+        kind = self._intent(text)
         yield {"type": "state", "phase": "thinking", "label": "One sec"}
+        yield from self._dispatch(kind, text, live=self.pos < len(self.plan), cut=True)
+
+    # ---- 插话 / 追问（10-28，docs/12）：每种意思一个处理；live = 导览还没讲完，处理完接着讲
+    def _intent(self, text: str) -> str:
+        k = intent(text)
+        if k == "question?":  # 规则只是猜：问一次模型（2 s 内），不行就当问题
+            k2, place = intent_llm(text, self._intent_context()) if not self.deterministic else (None, None)
+            if k2:
+                self._llm_place = place
+                return k2
+            k = "question"
+        wrap = getattr(self, "last_awaiting", None) == "wrap"
+        if k == "resume" and wrap and re.search(r"\b(yes|yeah|yep|sure|please|ok(ay)?)\b", text.lower()):
+            return "questions"  # 收尾问的 "details on one, or the questions?" 答 "yes please"：给问题清单
+        if k in ("question", "unclear") and len(re.findall(r"[a-z']+", text.lower())) <= 5 and listings_in(text, self.ranked[:TOP_N]) \
+                and not dim_for(text) and not QUESTION_START.search(_strip_markers(text.lower())):
+            return "detail" if wrap else "jump"  # 只说了是哪套（"the second one"）：讲完了 = 要细节，讲着 = 跳过去
+        return k
+
+    def _intent_context(self) -> str:
+        shown = [phraser.street_name(it["listing"]["street"]) for it in self.ranked[:TOP_N]]
+        cur = listing_by_id(self.current)
+        return f"shortlist: {', '.join(shown)}; now talking about: {phraser.street_name(cur['street']) if cur else 'none'}"
+
+    def _dispatch(self, kind: str, text: str, live: bool, cut: bool = False) -> Iterator[dict]:
+        """cut = 这句是打断了正在说的话（客户端带了 interrupted）；不是打断的 "go on"（停着 / 中介回复后）直接接着讲，不先说 "Sure."。"""
+        place = getattr(self, "_llm_place", None)
+        self._llm_place = None
+        if place and place not in ("current", "none") and not re.search(r"\b(first|second|third|next|last)\b", text.lower()):
+            text = f"{text} (the {place} one)"  # 模型听出是哪套：补进话里，下面的 find_listing 照常认
         if kind == "resume":
-            yield self._say("Sure.", step="resume")
-            yield {"type": "state", "phase": "touring", "label": "Continuing"}
-            yield from self._emit_plan()
-        elif kind == "next":
-            nxt = next((i for i in range(self.pos, len(self.plan)) if self.plan[i]["type"] == "card"), None)
+            if live:
+                if cut:
+                    yield self._say("Sure.", step="resume")
+                yield {"type": "state", "phase": "touring", "label": "Continuing"}
+                yield from self._emit_plan()
+            else:
+                yield from self._idle(self._say("That was all of them. Want details on one, or the questions for the agents?", step="resume", expects_answer=True))
+            return
+        if kind == "next":
+            nxt = next((i for i in range(self.pos, len(self.plan)) if self.plan[i]["type"] == "card"), None) if live else None
             if nxt is None:
-                self.pos = max(0, len(self.plan) - 1)
-                yield self._say("That was the last one. Here's the wrap-up.", step="next")
+                wrap = next((i for i in range(self.pos, len(self.plan)) if self.plan[i].get("step") == "wrap"), None) if live else None
+                if wrap is None:
+                    yield from self._idle(self._say("That was the last one. Want details on one, or the questions for the agents?", step="next", expects_answer=True))
+                    return
+                self.pos = wrap
+                yield self._say("That was the last one.", step="next")
             else:
                 self.pos = nxt
                 yield self._say(phraser.pick("next", not self.deterministic), step="next")
             yield {"type": "state", "phase": "touring", "label": "Continuing"}
             yield from self._emit_plan()
-        elif kind == "stop":
+            return
+        if kind == "stop":
             yield self._say("Okay, I'll pause here. Say continue when you're ready.", step="stop")
             yield {"type": "state", "phase": "idle", "label": "Paused"}
             yield {"type": "done"}
-        elif kind == "question":
-            if self._nar():
-                yield self._say(phraser.pick("answer"), step="bridge")
-            yield from self._answer(text)
+            return
+        if kind == "decline":
+            yield from self._idle(self._say("No problem. I'm here if you need anything else.", step="decline"))
+            return
+        if kind == "repeat":
+            yield from self._repeat()
+            return
+        if kind == "shorter":
+            yield from self._shorter(live)
+            return
+        if kind == "detail":
+            yield from self._detail(text, live)
+            return
+        if kind == "jump":
+            yield from self._jump(text, live)
+            return
+        if kind == "reject":
+            yield from self._reject(text)
+            return
+        if kind == "agent_reply":
+            yield from self._agent_reply(text)
+            return
+        if kind == "update":
+            yield from self._update(text, live)
+            return
+        if kind == "questions":
+            yield from self._after(self._questions(), live)
+            return
+        if kind == "rank":
+            yield from self._after(iter([self._say(phraser.ranking_plain(self.ranked[:TOP_N]), step="answer")]), live)
+            return
+        if kind == "compare":
+            yield from self._after(self._compare(text), live)
+            return
+        if kind == "question":
+            yield from self._after(self._answer(text), live)
+            return
+        yield self._say("Sorry, I didn't catch that." + (" I'll carry on; interrupt me any time." if live else " Say it another way?"), step="unclear")
+        if live:
+            yield {"type": "state", "phase": "touring", "label": "Continuing"}
+            yield from self._emit_plan()
+        else:
+            yield {"type": "state", "phase": "idle", "label": "Ready"}
+            yield {"type": "done"}
+
+    def _idle(self, *events: dict) -> Iterator[dict]:
+        for ev in events:
+            yield ev
+        self._mark_finished()
+        yield {"type": "state", "phase": "idle", "label": "Ready"}
+        yield {"type": "done"}
+
+    def _after(self, answer: Iterator[dict], live: bool) -> Iterator[dict]:
+        """答完：导览还没讲完就说一句 "back to …" 接着讲（下一句本来就是新一套的开头就不用说），讲完了就停。"""
+        yield from answer
+        if live and self.pos < len(self.plan):
+            nxt = next((ev for ev in self.plan[self.pos:] if ev["type"] == "say"), None)
             cur = next((i for i, it in enumerate(self.ranked[:TOP_N]) if it["listing"]["id"] == self.current), None)
-            if cur is not None and self.pos < len(self.plan):
+            if cur is not None and nxt is not None and not re.fullmatch(r"L\d+", nxt.get("step") or "") and nxt.get("step") != "wrap":
                 yield self._say(phraser.back(cur, variety=not self.deterministic), step="back")
             yield {"type": "state", "phase": "touring", "label": "Continuing"}
             yield from self._emit_plan()
-        elif kind == "agent_reply":
-            yield from self._agent_reply(text)
-        elif kind == "update":
-            started = start_needs_llm(text, self.profile) if needs_llm_ready() else None
-            yield self._say(phraser.bridge([], interrupted=True, variety=not self.deterministic), step="bridge")  # "Okay."：先出声，模型同时解析
-            if started is not None:
-                changed, self.parse_meta = parse_needs_llm(text, self.profile, started=started)
-            else:
-                changed, self.parse_meta = parse_into(self.profile, text), rules_meta()
-            if changed:
-                yield from self._search(changed)
-            else:
-                yield self._say("I didn't catch a condition there. I'll carry on, interrupt me any time.", step="unclear")
-                yield from self._emit_plan()
+            return
+        self._mark_finished()
+        yield {"type": "state", "phase": "idle", "label": "Ready"}
+        yield {"type": "done"}
+
+    def _mark_finished(self) -> None:
+        """导览讲完以后的每一轮都以同一个问题收尾（details on one, or the questions?）："yes" / "the second one" 照它理解。"""
+        if self.plan and self.pos >= len(self.plan):
+            self.awaiting = "wrap"
+
+    def _build(self, narration: Optional[Dict[int, Future]] = None, only: Optional[Set[str]] = None, mode: Optional[str] = None) -> List[dict]:
+        plan = build_tour(self.ranked, self.profile, self.excluded, narration=narration, mode=mode or self.mode, start_idx=self.idx_seq, only=only,
+                          variety=not self.deterministic)
+        self.idx_seq = max([ev["idx"] for ev in plan if ev["type"] == "say" and ev.get("idx") is not None] + [self.idx_seq - 1]) + 1
+        return plan
+
+    def _segment(self, item: dict, mode: str) -> List[dict]:
+        """一套房的事件（brief / full），编号接着会话往上数：插进计划里讲（tell me more / go back to）。"""
+        i = next((k for k, it in enumerate(self.ranked[:TOP_N]) if it["listing"]["id"] == item["listing"]["id"]), 0)
+        plan: List[dict] = []
+        idx = [self.idx_seq]
+
+        def say(text: str, step: str, fut: Optional[Future] = None, key: Optional[str] = None) -> None:
+            if text:
+                plan.append({"type": "say", "idx": idx[0], "text": text, "step": step})
+                idx[0] += 1
+        if mode == "full":
+            _full_events(plan, say, i, len(self.ranked[:TOP_N]), item, self.profile)
         else:
-            yield self._say("Sorry, I didn't catch that. I'll carry on, interrupt me any time.", step="unclear")
+            _brief_events(plan, say, i, item, self.profile, {}, variety=not self.deterministic)
+        self.idx_seq = idx[0]
+        return plan
+
+    def _say_n(self, text: str, step: str) -> dict:
+        """插进计划里的句子也带编号（被打断时客户端报得回来）。"""
+        ev = {"type": "say", "idx": self.idx_seq, "text": text, "step": step}
+        self.idx_seq += 1
+        return ev
+
+    def _segment_end(self, k: int) -> int:
+        """计划里从 k 开始这一套房的事件到哪结束（下一张卡、beat 或收尾那句之前）。"""
+        j = k + 1
+        while j < len(self.plan) and self.plan[j]["type"] not in ("card", "beat") and self.plan[j].get("step") != "wrap":
+            j += 1
+        return j
+
+    def _says_of(self) -> Dict[str, List[int]]:
+        says_of: Dict[str, List[int]] = {}
+        card = None
+        for k, ev in enumerate(self.plan):
+            if ev["type"] == "card":
+                card = ev["listing"]["id"]
+                says_of.setdefault(card, [])
+            elif ev["type"] == "say" and card and ev.get("step") != "wrap":
+                says_of[card].append(k)
+        return says_of
+
+    def _heard_ids(self) -> Set[str]:
+        """这几套的三句（或逐格）已经全部讲完、客户端也播完了：改需求后不再重讲。"""
+        return {lid for lid, ks in self._says_of().items() if ks and max(ks) < self.pos}
+
+    def _started_ids(self) -> Set[str]:
+        """这几套至少开头那句已经播过了（被打断时正在讲的那套）。"""
+        return {lid for lid, ks in self._says_of().items() if ks and min(ks) < self.pos}
+
+    def _rank(self) -> Tuple[List[dict], int]:
+        ranked, excluded = rank(self.profile, self.overrides)
+        if self.rejected:
+            ranked = [r for r in ranked if r["listing"]["id"] not in self.rejected]
+        return ranked, excluded
+
+    def _vague(self) -> Optional[str]:
+        """租客说了个量不了通勤的地方（the beach / the uni / work）：反问时直接给能量的几个地方。"""
+        if self.profile.get("anchor"):
+            return None
+        for t in reversed(self.heard):
+            m = re.search(VAGUE_PLACE, t.lower())
+            if m:
+                return m.group(1)
+        return None
+
+    def _repeat(self) -> Iterator[dict]:
+        """"Sorry, what was that?"：从最后一句完整说完的那句重说（被切断的那句跟着）。"""
+        k = next((j for j in range(min(self.pos, len(self.plan)) - 1, -1, -1) if self.plan[j]["type"] == "say"), None)
+        if k is None:
+            yield from self._idle(self._say("Sorry, I haven't said anything about the places yet.", step="repeat"))
+            return
+        self.pos = k
+        yield {"type": "state", "phase": "touring", "label": "Continuing"}
+        yield from self._emit_plan()
+
+    def _shorter(self, live: bool) -> Iterator[dict]:
+        """"Short version" / "too long"：逐格 → 三句，三句 → 每套一句；剩下没讲的照新讲法重排。"""
+        self.mode = {"full": "brief", "brief": "headlines"}.get(self.mode, "headlines")
+        line = "Sure, just the headlines." if self.mode == "headlines" else "Sure, I'll keep it short."
+        if not live:
+            yield from self._idle(self._say(line + " Want details on one, or the questions for the agents?", step="shorter", expects_answer=True))
+            return
+        k = next((j for j in range(self.pos, len(self.plan)) if self.plan[j]["type"] == "card"), None)
+        later = [ev["listing"]["id"] for ev in self.plan[k:] if ev["type"] == "card"] if k is not None else []
+        rest = self._build(only=set(later)) if later else [ev for ev in self.plan[self.pos:] if ev.get("step") == "wrap"]
+        self.plan = self.plan[:self.pos] + [self._say_n(line, "shorter")] + rest
+        yield {"type": "state", "phase": "touring", "label": "Continuing"}
+        yield from self._emit_plan()
+
+    def _detail(self, text: str, live: bool) -> Iterator[dict]:
+        """"Tell me more (about the second one)"：那套逐格讲一遍（插在这里），讲完接着原来的。说的是正在讲的这套：这套剩下的三句不再说。"""
+        item = find_listing(text, self.ranked, self.current)
+        if item is None:
+            yield from self._idle(self._say("I don't have a shortlist yet. Tell me what you're after and I'll search.", step="answer"))
+            return
+        lid = item["listing"]["id"]
+        seg = self._segment(item, "full")
+        k = next((j for j in range(self.pos, len(self.plan)) if self.plan[j]["type"] == "card" and self.plan[j]["listing"]["id"] == lid), None)
+        if k is not None:  # 这套还没讲到（或刚开头就被打断）：后面那三句不用再讲了
+            del self.plan[k:self._segment_end(k)]
+            if k > self.pos and self.plan[k - 1]["type"] == "beat":
+                del self.plan[k - 1]
+        elif live and lid == self.current:  # 正讲到一半：这套剩下的那几句不说了
+            j = next((j for j in range(self.pos, len(self.plan)) if self.plan[j]["type"] in ("card", "beat") or self.plan[j].get("step") == "wrap"), len(self.plan))
+            del self.plan[self.pos:j]
+        self.plan[self.pos:self.pos] = seg + ([self.plan_beat()] if live and self.pos < len(self.plan) else [])
+        yield {"type": "state", "phase": "touring", "label": "Here's the detail"}
+        yield from self._emit_plan()
+
+    @staticmethod
+    def plan_beat() -> dict:
+        return {"type": "beat", "ms": BEAT_MS}
+
+    def _jump(self, text: str, live: bool) -> Iterator[dict]:
+        """"Go back to the first one" / "tell me about the third"：那套的三句挪到这里讲（讲过的就再讲一遍），讲完接着原来的。"""
+        item = find_listing(text, self.ranked, self.current)
+        if item is None:
+            yield from self._idle(self._say("I don't have a shortlist yet. Tell me what you're after and I'll search.", step="answer"))
+            return
+        lid = item["listing"]["id"]
+        k = next((j for j in range(self.pos, len(self.plan)) if self.plan[j]["type"] == "card" and self.plan[j]["listing"]["id"] == lid), None)
+        if k is not None:  # 还没讲到：整段挪过来（后面就不会再讲一遍）
+            end = self._segment_end(k)
+            seg = self.plan[k:end]
+            del self.plan[k:end]
+            if k > self.pos and self.plan[k - 1]["type"] == "beat":
+                del self.plan[k - 1]  # 它前面那个停顿也不要了
+        else:
+            seg = self._segment(item, "brief" if self.mode != "full" else "full")
+        back = []
+        if live and self.pos < len(self.plan):
+            cur = next((i for i, it in enumerate(self.ranked[:TOP_N]) if it["listing"]["id"] == self.current), None)
+            nxt = next((ev for ev in self.plan[self.pos:] if ev["type"] == "say"), None)
+            if cur is not None and nxt is not None and not re.fullmatch(r"L\d+", nxt.get("step") or "") and nxt.get("step") != "wrap" and self.current != lid:
+                back = [self.plan_beat(), self._say_n(phraser.back(cur, variety=not self.deterministic), "back")]
+            else:
+                back = [self.plan_beat()]
+        self.plan[self.pos:self.pos] = seg + back
+        yield {"type": "state", "phase": "touring", "label": "Continuing"}
+        yield from self._emit_plan()
+
+    def _reject(self, text: str) -> Iterator[dict]:
+        """"Too far" / "not that one"：划掉，记住（有租客编号就跨会话记），重排；补进来的那套和还没讲的照讲。"""
+        item = find_listing(text, self.ranked, self.current)
+        if item is None:
+            yield from self._idle(self._say("Which one should I drop?", step="reject", expects_answer=True))
+            return
+        L = item["listing"]
+        self.rejected.add(L["id"])
+        if self.renter:
+            memory.add_rejected(self.renter, L["id"])
+        yield self._say(phraser.dropped_line(L), step="reject")
+        yield from self._retune({}, dropped_by_renter=L["id"])
+
+    def _update(self, text: str, live: bool) -> Iterator[dict]:
+        """导览中 / 讲完后改需求：先 "Okay."（模型同时解析），改到了就 _retune（不从头念）；没改到但说的和现在一样就确认；都不是就当问题答。"""
+        started = start_needs_llm(text, self.profile) if needs_llm_ready() else None
+        yield self._say(phraser.bridge([], interrupted=True, variety=not self.deterministic), step="bridge")  # "Okay."：先出声，模型同时解析
+        if started is not None:
+            changed, self.parse_meta = parse_needs_llm(text, self.profile, started=started)
+        else:
+            changed, self.parse_meta = parse_into(self.profile, text), rules_meta()
+        self._restated(changed)
+        if changed:
+            yield from self._retune(changed)
+            return
+        same = {k: v for k, v in rules_fields(text).items() if v not in (None, [], {}) and k in ("budget", "bedrooms", "anchor", "pets", "move_in")
+                and self.profile.get(k) == v}
+        if same:
+            words = {"budget": lambda v: f"under {v} a week", "bedrooms": lambda v: phraser.beds_phrase(v), "anchor": lambda v: f"near {v}",
+                     "pets": lambda v: v.get("text", "pets") if isinstance(v, dict) else str(v), "move_in": lambda v: v.get("text", "") if isinstance(v, dict) else str(v)}
+            line = phraser.confirm_same({k: words[k](v) for k, v in same.items()})
+        else:
+            line = "I didn't catch a change there." + (" I'll carry on; interrupt me any time." if live else "")
+        yield self._say(line, step="unclear")
+        if live:
             yield {"type": "state", "phase": "touring", "label": "Continuing"}
             yield from self._emit_plan()
+        else:
+            yield {"type": "state", "phase": "idle", "label": "Ready"}
+            yield {"type": "done"}
+
+    def _retune(self, changed: Dict[str, str], dropped_by_renter: Optional[str] = None) -> Iterator[dict]:
+        """改需求 / 划掉一套之后：不复述、不报来源、不从头念。说一句"记下了"，再说前三名怎么变、新条件在前三名里的情况，
+        然后只讲没听完的（新进来的、还没讲到的、被打断时正在讲的）。"""
+        old = [it["listing"]["id"] for it in self.ranked[:TOP_N]]
+        heard = self._heard_ids() if self.plan else set()
+        started = (self._started_ids() - heard) if self.plan else set()
+        yield {"type": "needs", "profile": self._profile_view(), "missing": missing_required(self.profile), **self._parse_view(), **self._needs_memory()}
+        if changed:
+            yield self._say(phraser.noted(changed), step="update")
+        yield {"type": "state", "phase": "searching", "label": "Checking sources"}
+        self.ranked, self.excluded = self._rank()
+        if self.renter:
+            self.memory = memory.save(self.renter, self.profile, [r["listing"]["id"] for r in self.ranked[:TOP_N]], self.request_text, self.id,
+                                      open=open_loops(self.ranked, self.profile)) or self.memory
+        yield from self._sources(len(self.ranked), announce=False)
+        shown = self.ranked[:TOP_N]
+        for i, it in enumerate(shown):  # 前台的卡片先按新排名摆好（讲到哪套再点亮哪套）
+            yield {"type": "card", "listing": card_payload(it["listing"], it["cells"], i + 1)}
+        new = [it["listing"]["id"] for it in shown]
+        street = {it["listing"]["id"]: it["listing"]["street"] for it in shown}
+        for lid in old:
+            if lid not in street:
+                L0 = listing_by_id(lid)
+                if L0:
+                    street[lid] = L0["street"]
+        dropped = [street[x] for x in old if x not in new and x != dropped_by_renter]
+        added = [street[x] for x in new if x not in old]
+        lines = []
+        if not shown:
+            lines.append("Nothing passes the basics with that. Want to loosen something?")
+        else:
+            if changed or dropped or added:
+                lines.append(phraser.shortlist_diff(dropped, added, same_order=(old == new), new_top=street.get(new[0]) if new and old and new[0] != old[0] else None)
+                             if (dropped or added or old != new) else "Same top three.")
+            for d in self._new_dims(changed):
+                yes = [it["listing"]["street"] for it in shown if (it["cells"].get(d) or {}).get("status") == "supported"]
+                no = [it["listing"]["street"] for it in shown if (it["cells"].get(d) or {}).get("status") != "supported"]
+                lines.append(phraser.condition_line(d, yes, no))
+        for ln in lines:
+            yield self._say(ln, step="diff")
+        if not shown:
+            yield {"type": "state", "phase": "idle", "label": "Ready"}
+            yield {"type": "done"}
+            return
+        todo = {x for x in new if x not in heard}
+        self.plan = self._build(only=todo) if todo else [self._say_n("Want details on one, or the questions for the agents?", "wrap")]
+        card = None
+        for ev in self.plan:  # 被打断时正在讲的那套：开头那句刚听过，换成一句短的（"Fenwick Street is still the top pick."），不原样再念（模拟顾客 P03）
+            if ev["type"] == "card":
+                card = ev["listing"]["id"]
+            elif ev["type"] == "say" and card in started and re.fullmatch(r"L\d+", ev.get("step") or ""):
+                ev["text"] = phraser.rank_again(street[card], new.index(card) + 1, old.index(card) + 1 if card in old else None)
+                started.discard(card)
+        self.pos = 0
+        yield {"type": "state", "phase": "touring", "label": "Walking you through"}
+        yield from self._emit_plan()
+
+    def _new_dims(self, changed: Dict[str, str]) -> List[str]:
+        """这次改动新加的、要在前几套里核的条件（furnished、air con、宠物…）：确认那句说"只有 Alder Lane 有家具"。"""
+        out = []
+        if "pets" in changed and (self.profile.get("pets") or {}).get("has"):
+            out.append("J1")
+        if "extras" in changed:
+            out += [e["dim"] for e in self.profile["extras"] if e["label"].lower() == changed["extras"]]
+        return out[:2]
+
+    def _note_question(self, topic: str) -> None:
+        if topic and topic not in self.extra_questions:
+            self.extra_questions.append(topic)
+
+    def _questions(self) -> Iterator[dict]:
+        """"Draft the questions"：每套最该问中介的一句 + 租客问过、我们答不上的 + 法定必问（犯罪披露）。页面也收到一份（questions 事件）。"""
+        shown = self.ranked[:TOP_N]
+        items, rows = [], []
+        for it in shown:
+            bq = best_question(it["cells"])
+            if bq:
+                q = phraser.q_short(bq[0], bq[1], self.profile, it["listing"])
+                items.append((phraser.street_name(it["listing"]["street"]), q))
+                rows.append({"listing_id": it["listing"]["id"], "street": it["listing"]["street"], "dim": bq[0], "question": q})
+        legal = any(it["cells"]["H1"]["status"] == "unknown" for it in shown)
+        yield {"type": "questions", "items": rows, "extra": list(self.extra_questions), "legal": legal}
+        for x in sentences(phraser.questions_text(items, legal, self.extra_questions)):
+            yield self._say(x, step="questions")
+
+    def _compare(self, text: str) -> Iterator[dict]:
+        shown = self.ranked[:TOP_N]
+        if not shown:
+            yield self._say("I don't have a shortlist yet. Tell me what you're after and I'll search.", step="answer")
+            return
+        targets = listings_in(text, shown)
+        if len(targets) < 2 and re.search(r"\b(this|that|it)\b", text.lower()):
+            cur = next((it for it in shown if it["listing"]["id"] == self.current), None)
+            if cur is not None and all(t is not cur for t in targets):
+                targets = [cur] + targets
+        d = compare_dim_for(text)
+        if len(targets) >= 2 and not d:
+            line = phraser.compare_pair(targets[0], targets[1], self.profile)
+        elif d:
+            line = phraser.compare_dim(d, targets if len(targets) >= 2 else shown, self.profile)
+        else:
+            line = phraser.ranking_plain(shown)
+        for x in sentences(line):
+            yield self._say(x, step="answer")
 
     def _answer(self, text: str) -> Iterator[dict]:
-        if re.search(r"\b(which|best|cheapest|closest|recommend|top)\b", text.lower()) and not any(re.search(r"\b" + w + r"\b", text.lower()) for w in ORDINALS):
-            fact = phraser.ranking(self.ranked)
-            out = narrator.line("answer", fact, statement=True, context=self._ctx(), required=narrator.nums(fact), must=r"score|highest|top|best|cheapest|first|strongest") if self._nar() else None
-            yield self._said(out or fact, fact, step="answer")
-            return
+        """答问：先说结论再给一句依据（answer_plain）。押金：挂牌没写就说 NSW 上限。"下一套便宜吗"：和正在讲的这套比。答不上的记进问题清单。"""
+        t = text.lower()
         item = find_listing(text, self.ranked, self.current)
         if item is None:
             yield self._say("I don't have a shortlist yet. Tell me what you're after and I'll search.", step="answer")
             return
         L, cells = item["listing"], item["cells"]
+        if re.search(r"\b(bond|deposit)\b", t):
+            self._note_question("the bond")
+            for x in sentences(phraser.bond_line(L)):
+                yield self._say(x, step="answer")
+            return
         d = dim_for(text)
+        cur = next((it for it in self.ranked[:TOP_N] if it["listing"]["id"] == self.current), None)
+        if re.search(r"\b(cheaper|dearer|pricier|more expensive|closer|nearer|further|farther|bigger|smaller)\b", t) and cur is not None and cur is not item:
+            for x in sentences(phraser.comparative(cur, item, compare_dim_for(text) or "", self.profile) or phraser.compare_pair(cur, item, self.profile)):
+                yield self._say(x, step="answer")
+            return
         if d and d in cells:
             c = cells[d]
             yield {"type": "highlight", "listing_id": L["id"], "dim": d, "status": c["status"]}
             yield {"type": "evidence", "listing_id": L["id"], "dim": d, "label": c["label"], "status": c["status"], "items": c["evidence"]}
-            fact = phraser.answer(d, c, L, self.profile)
-            out = None
-            if self._nar():
-                spec = narrator.cell_spec(d, c, L, self.profile)
-                out = narrator.line("answer", fact, statement=True, context=self._ctx(), required=spec["required"], allowed=spec["allowed"], status=spec["status"],
-                                    words=spec["words"], overlap=0.3)
-            yield self._said(out or fact, fact, step="answer")
-        elif d:
-            fact = phraser.no_fact(L, DIMS[d]["label"].lower())
-            out = narrator.line("answer", fact, statement=True, context=self._ctx(), status="unknown", words=narrator.DIM_WORDS.get(d)) if self._nar() else None
-            yield self._said(out or fact, fact, step="answer")
-        else:
-            fact = phraser.no_fact(L, "that")
-            out = narrator.line("answer", fact, statement=True, context=self._ctx(), status="unknown") if self._nar() else None
-            yield self._said(out or fact, fact, step="answer")
+            for x in sentences(phraser.answer_plain(d, c, L, self.profile)):
+                yield self._say(x, step="answer")
+            return
+        topic = phraser.LABEL_PLAIN.get(d) if d else None
+        if topic is None:
+            m = re.search(r"\b(parking|car space|garage|storage|gym|pool|lift|elevator|balcony|laundry|dishwasher|internet|nbn|lease|inspection|viewing|heating|"
+                          r"washing machine|dryer|security|intercom)\b", t)
+            topic = m.group(1) if m else None
+        if topic:
+            self._note_question(f"{topic} at {phraser.street_name(L['street'])}")
+            yield self._say(phraser.no_fact_plain(L, topic), step="answer")
+            return
+        yield self._say(f"I don't have an answer to that for {phraser.street_name(L['street'])}. Try asking about rent, the commute, pets or what's included.", step="answer")
 
     def _agent_reply(self, text: str) -> Iterator[dict]:
         """演示第 7 步：租客转达（或粘贴）中介的回复 → 当新材料：Nemotron 读出它答的是哪一格（replies.py），翻格、重排、记信念日志（beliefs.py）；
@@ -1504,9 +2164,9 @@ class Session:
         override = {"status": new, "why": why, "evidence": [{"table": "documents", "row": f"agent_replies/{L['id']}", "material_id": f"M-{L['id'][2:]}-reply-{n:02d}",
                                                              "text": quote or text, "channel": channel, "reader": meta.get("parser")}]}
         prev = {k: dict(v) for k, v in self.overrides.items()}
-        before = [it["listing"]["id"] for it in rank(self.profile, prev)[0][:TOP_N]]
+        before = [it["listing"]["id"] for it in rank(self.profile, prev)[0] if it["listing"]["id"] not in self.rejected][:TOP_N]
         self.overrides.setdefault(L["id"], {})[dim] = override
-        self.ranked, self.excluded = rank(self.profile, self.overrides)
+        self.ranked, self.excluded = self._rank()
         after = [it["listing"]["id"] for it in self.ranked[:TOP_N]]
         row = beliefs.record(self.renter, listing_id=L["id"], street=L["street"], dim=dim, label=DIMS[dim]["label"], old=old, new=new, source=source,
                              text=text, override=override, session_id=self.id, event_id_=eid, reader=meta, rank_before=before, rank_after=after,
@@ -1592,7 +2252,8 @@ class Session:
         """中介回复改了格子、可能重排之后重建导览计划，但记住讲到哪了：导览已经讲完就还算讲完（"继续"不会从头再来一遍）；
         讲到一半就停在当前这套房还没讲过的第一格（已经讲过的格子，包括刚被改的那格，不重复；"continue / go on" 从这里接着讲）。"""
         if self.plan and self.pos == 0:  # 还没开讲（中介回复在开讲前到了）：计划重建，照样从头讲
-            self.plan = build_tour(self.ranked, self.profile, self.excluded)
+            self.plan = self._build()
+            self.emit_from = 0
             return
         cur_id = self.current
         tour_done = not self.plan or self.pos >= len(self.plan)
@@ -1603,13 +2264,13 @@ class Session:
                 card = ev["listing"]["id"]
             elif ev["type"] == "say" and card == cur_id:
                 spoken.add(ev["step"].split(".", 1)[1] if "." in ev["step"] else "intro")
-        self.plan = build_tour(self.ranked, self.profile, self.excluded)
+        self.plan = self._build()
         if tour_done:
-            self.pos = len(self.plan)
+            self.pos = self.emit_from = len(self.plan)
             return
         card_pos = next((k for k, ev in enumerate(self.plan) if ev["type"] == "card" and ev["listing"]["id"] == cur_id), None)
         if card_pos is None:  # 这套房重排后掉出前三：当作讲完
-            self.pos = len(self.plan)
+            self.pos = self.emit_from = len(self.plan)
             return
         k = next((k for k in range(card_pos + 1, len(self.plan))
                   if self.plan[k]["type"] == "card"
@@ -1617,7 +2278,7 @@ class Session:
                  len(self.plan))
         while k - 1 > card_pos and self.plan[k - 1]["type"] in ("highlight", "evidence"):
             k -= 1  # 把下一格前面的高亮 / 证据事件也带上
-        self.pos = k
+        self.pos = self.emit_from = k
 
     def _parse_view(self) -> dict:
         """needs 事件里标明这次需求是哪条路解析的（parser: llm / rules）和细节。"""

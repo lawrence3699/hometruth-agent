@@ -35,6 +35,20 @@ def profile(**over):
     return p
 
 
+_TOUR = os.environ.get("VOICE_TOUR")
+
+
+def setUpModule():  # 逐格讲法（简短播报见 test_voice_brief.py）；开跑时设、跑完放回，不串到别的测试模块
+    os.environ["VOICE_TOUR"] = "full"
+
+
+def tearDownModule():
+    if _TOUR is None:
+        os.environ.pop("VOICE_TOUR", None)
+    else:
+        os.environ["VOICE_TOUR"] = _TOUR
+
+
 class ReadingToFacts(unittest.TestCase):
     def test_stamped_photo_means_staged_furniture_that_is_shown_to_everyone(self):
         reading = {"room": "living room", "watermark_text": "VIRTUALLY STAGED", "virtual_staging": True, "furniture": ["sofa", "coffee table"], "cooktop": "none_visible"}
@@ -110,7 +124,7 @@ class MatrixRows(unittest.TestCase):
         row = next(c for c in card["cells"] if c["dim"] == "C2")
         self.assertEqual((row["short"], row["photo"], row["status"]), ("staged", True, "inferred"))
         line = next(e["text"] for e in ev if e["type"] == "say" and e.get("step") == "L0.C2")
-        self.assertTrue(line.startswith("Furniture: I can only infer. The listing photo is stamped 'VIRTUALLY STAGED'"), line)
+        self.assertTrue(line.startswith("Furniture: probably, but not confirmed. The listing photo is stamped 'VIRTUALLY STAGED'"), line)
         evid = next(e for e in ev if e["type"] == "evidence" and e["dim"] == "C2")
         self.assertEqual(evid["items"][0]["read_by"], MODEL)
         self.assertTrue(evid["items"][0]["image"].endswith("L-0002-01.jpg"))

@@ -99,10 +99,25 @@ def save(renter_id: Optional[str], profile: dict, top: List[str], heard: str = "
     p["max_commute"] = profile.get("max_commute") or 40
     mem = {"version": VERSION, "renter": rid, "first_seen": old.get("first_seen") or now, "saved_at": now, "visits": int(old.get("visits") or 0) + 1,
            "profile": p, "summary": phraser.summary(p), "top": [str(x) for x in top][:5], "last_heard": (heard or "")[:200], "session": session_id,
-           "open": [dict(o) for o in (open or [])][:5]}
+           "open": [dict(o) for o in (open or [])][:5], "rejected": [str(x) for x in (old.get("rejected") or [])][:50]}
     DIR.mkdir(parents=True, exist_ok=True)
     path(rid).write_text(json.dumps(mem, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return mem
+
+
+def add_rejected(renter_id: Optional[str], listing_id: str) -> None:
+    """租客说不要的那套（"too far" / "not that one"）：记下来，下次排名也跳过（policy.Session.attach_renter 读回来）。"""
+    rid = clean_id(renter_id)
+    if not rid:
+        return
+    mem = load(rid)
+    if not mem:
+        return
+    rej = [str(x) for x in (mem.get("rejected") or [])]
+    if str(listing_id) not in rej:
+        rej.append(str(listing_id))
+    mem["rejected"] = rej[-50:]
+    path(rid).write_text(json.dumps(mem, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
 def forget(renter_id: Optional[str]) -> bool:
