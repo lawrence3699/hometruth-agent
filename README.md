@@ -87,7 +87,7 @@ Open http://127.0.0.1:8630 and type *"Two bedrooms near UNSW under 900 a week, I
 **With no keys at all** the whole flow still runs:
 - Needs are parsed by rules.
 - Sentences come from templates.
-- Source queries are simulated, and the page labels them *simulated*.
+- Source queries are simulated. Hover over a source row and it says *simulated*.
 - The voice is macOS `say` or the browser's built-in voice.
 
 To turn on the real services:
