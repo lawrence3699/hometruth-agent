@@ -1,26 +1,17 @@
-# HomeTruth 演示视频稿 v4（2 分钟，产品介绍式）
+# HomeTruth 演示视频稿 v4（约 1 分 50 秒，产品介绍式）
 
-## 分镜（约 2:00）
+## 分镜（约 1:50）
 
 **旁白** = 讲解的人（建议真人）；**App** = 网站自己的声音；**租客** = 演示里的用户。每个特点开头有一张 1 秒的标题卡（左上角编号 + 一句话），之后标题缩到左上角一直挂着。
 
-### 0 · 开场：问题（0:00–0:12）　Impact
-
-**画面**：Day Avenue（Kensington，真房源）客厅照片铺满，推近到右下角 “this advert has been digitally furnished”，画红框；然后照片缩小到左边，右边弹出两个数字：
-`130 of 156` say "air conditioning", not which room · `134 of 156` never mention pets
-左下角挂 “Domain listing 14397815 · photo © the agency”。
-
-**旁白**：
-> This flat looks furnished. It isn't: "this advert has been digitally furnished." Of 156 full Sydney listings we read, 130 don't say which room has air con, and 134 never mention pets.
-
-### 片名（0:12–0:15）
+### 片名（0:00–0:03）
 
 **画面**：白底 logo + 产品一句话。
 
 **旁白**：
 > Meet HomeTruth: a rental agent you can talk to, that checks every claim.
 
-### 特点 1 · 直接说话或打字，像跟人聊天一样筛房（0:15–0:35）　UX + Demo
+### 特点 1 · 直接说话或打字，像跟人聊天一样筛房（0:03–0:23）　UX + Demo
 
 **标题卡**：`1 · Just say what you need`
 
@@ -38,7 +29,7 @@
 **旁白**（“61 places pass the basics” 放大时）：
 > No forms, no filters. Talk or type in plain English. It only asks for what's missing, then filters every listing for you.
 
-### 特点 2 · 七个来源同时查（0:35–0:46）　Technical + 赞助商
+### 特点 2 · 七个来源同时查（0:23–0:34）　Technical + 赞助商
 
 **标题卡**：`2 · It checks seven sources at once`
 
@@ -47,7 +38,7 @@
 **旁白**：
 > Listings, photos, floor plans, agent replies, rent records, transit, sunlight. Seven sources, queried at once through Zetaris, and every fact keeps its receipt.
 
-### 特点 3 · 每一行都写明依据（0:46–1:12）　Innovation + Explain Why
+### 特点 3 · 每一行都写明依据（0:34–1:00）　Innovation + Explain Why
 
 **标题卡**：`3 · Every line shows what backs it`
 
@@ -64,16 +55,20 @@
 **App**（紧接着，网页实际台词；放大 “Best question for this agent” 那行）：
 > Best question for this agent: are pets allowed, in writing?
 
-### 特点 4 · 它会看照片和户型图（1:12–1:24）　Innovation + NVIDIA
+### 特点 4 · 它会看照片：新旧、风格、小字（1:00–1:14）　Innovation + NVIDIA
 
 **标题卡**：`4 · It reads the photos`
 
-**画面**：Day Avenue 的详情页，照片 → 往下滑到 Furniture 那张卡，放大那句 “stamped 'this advert has been digitally furnished', so the sofa, armchair, coffee table and side table won't be there”，卡上如果带 “Read by Nemotron VL” 标记就画框，没有就用屏幕字 `Read by NVIDIA Nemotron` 标出来。
+**画面**：Day Avenue（Kensington，真房源）的详情页，先过一眼照片，再滑到 Checked 列表：
+1. 点开 **Condition** 那行（`Looks well kept`），放大里面那句 “From the photos: the exterior looks dated (old tiles, old cabinetry); the living room looks good (fresh paint, clean carpet…)”，也就是逐个房间说新旧。
+2. 同时右边弹出屏幕字：`Style read from the photos: warm timber · coastal · minimalist`（Nemotron 对这套房照片的真实读数，runs/style_facts.jsonl；页面上没有这一行，所以用屏幕字），给第 5 点做铺垫。
+3. 再点开 **Furniture** 那行（`Staged photos`），放大 “stamped 'this advert has been digitally furnished', so the sofa, armchair, coffee table and side table won't be there”。
+左下角一直挂 “Domain listing 14397815 · photo © the agency”；卡上没有 “Read by Nemotron” 字样，用屏幕字 `Read by NVIDIA Nemotron` 标出来。
 
 **旁白**：
-> NVIDIA Nemotron reads the listing photos and floor plans. Here it caught the fine print: the sofa, the armchair and the coffee table won't be there.
+> NVIDIA Nemotron reads the listing photos and floor plans. Room by room, it judges how new or worn the place looks and what style it's in. And it catches the fine print: this furniture was added digitally, so it won't be there.
 
-### 特点 5 · 传一张喜欢的房间照片，按你的口味再挑（1:24–1:42）　UX + Innovation + NVIDIA
+### 特点 5 · 传一张喜欢的房间照片，按你的口味再挑（1:14–1:32）　UX + Innovation + NVIDIA
 
 **标题卡**：`5 · Find your style`
 
@@ -88,7 +83,7 @@
 
 **屏幕字**：卡片角上的分数出现时 `Style match`；最后 `Soft preference — never overrides your must-haves`
 
-### 赞助商大白话（1:42–1:54）　赞助商技术
+### 赞助商大白话（1:32–1:44）　赞助商技术
 
 **画面**：白底一张简单的图，三块依次亮起，每块旁边一个真画面的小窗（Zetaris 查询编号 / Nemotron 读出的照片小字 / Nightshift 窗口里的 Nemotron lane 和调用记录）。
 
@@ -102,12 +97,12 @@
 **旁白**：
 > In plain words: Zetaris asks the questions. NVIDIA Nemotron does the reading. And Meterless Nightshift, on this laptop, hands the language requests to Nemotron.
 
-### 收尾（1:54–2:00）　Impact
+### 收尾（1:44–1:50）　Impact
 
-**画面**：回到开场那张照片，贴上 HomeTruth 的红色标签 `Furniture · digitally furnished · it won't be there`，淡到白底 logo + 网址。
+**画面**：前面四个画面各闪半秒（说话变成标签 → 七个来源打勾 → Pets 那行的标签 → 房源卡上的风格分），淡到白底 logo + 网址。
 
 **旁白**：
-> HomeTruth. Know what's true before you apply.
+> HomeTruth. Every claim checked, before you sign.
 
 **屏幕字**：`hometruth.codeprism.tech` · 小字 `Built with Zetaris · Meterless · NVIDIA Nemotron`
 
@@ -116,18 +111,18 @@
 ## 为什么这样排
 
 - **同意按特点介绍**：评委一眼能数出“这产品能干哪几件事”，Demo（15）和 UX（10）更好打分。
-- **但开场留 12 秒痛点**：Impact 占 30 分、平局也先比它。没有“为什么需要”，五个特点就只是功能清单。
+- **不单独做开场**（10-27 超亮定）：直接从片名开始。“为什么需要”放在特点里用真房源讲：特点 3 的宠物没书面确认、特点 4 的家具是电脑摆的。
 - **每个特点 = 一张标题卡 + 现场演示**：标题卡一句话说清特点，紧接着在网站上真操作给你看，不只是嘴上说。
-- **五个特点按“用户实际用的顺序”排**：说需求 → 它去查 → 给你看依据 → 帮你看穿照片 → 按你的口味再挑一遍。顺着看就是一次完整使用。
-- **第 4、5 点都是看图，但讲的是两件事**：第 4 点是“揭穿”（照片里的家具是假的），第 5 点是“懂你的口味”（你喜欢的风格哪套最像）。旁白和标题要把这个区别说出来。
+- **五个特点按“用户实际用的顺序”排**：说需求 → 它去查 → 给你看依据 → 帮你看照片 → 按你的口味再挑一遍。顺着看就是一次完整使用。
+- **第 4、5 点都是看图，但讲的是两件事**：第 4 点讲这套房本身（新旧、风格、假家具），第 5 点讲和你的口味比（你喜欢的风格哪套最像）。旁白和标题要把这个区别说出来。
 
 ### 评分对照
 
 | 评分项 | 分值 | 靠哪几个镜头 |
 |---|---:|---|
-| Impact | 30 | 开场（真照片 + 真数字）、收尾 |
+| Impact | 30 | 特点 3、4（真房源上的真问题：宠物没书面确认、家具是电脑摆的）、收尾 |
 | Technical | 20 | 特点 2（七个来源同时查）、特点 5（看一张照片就给几百套房打风格分）、赞助商镜头 |
-| Innovation | 15 | 特点 3（四种标签，从不把“可能”说成“是”；查不到的告诉你该问中介哪一句）、特点 4（读出照片上的小字）、特点 5（用一张照片表达口味） |
+| Innovation | 15 | 特点 3（四种标签，从不把“可能”说成“是”；查不到的告诉你该问中介哪一句）、特点 4（看照片逐个房间判断新旧、风格，读出照片上的小字）、特点 5（用一张照片表达口味） |
 | Demo | 15 | 特点 1–5 全是真房源、真操作 |
 | UX | 10 | 特点 1（直接说话 / 打字，只问缺的两样）、特点 5（不用描述风格，传张照片就行） |
 | 赞助商技术 | 10 | 特点 2、特点 4、特点 5、赞助商镜头 |
@@ -190,7 +185,8 @@
 | 视频里的说法 | 依据 |
 |---|---|
 | Day Avenue 照片写着 “this advert has been digitally furnished”，沙发、扶手椅、茶几、边桌都不会在 | 真挂牌照片；Nemotron VL 读出，矩阵 L-D14397815 的 C2 |
-| 156 套里 130 套没说空调在哪间、134 套没提宠物 | 10-27 20:01 从矩阵算：有完整详情页的 156 套真房源；C1 “not which rooms” 130、J1 unknown 134、J1 supported 0 |
+| Day Avenue 逐个房间的新旧（外墙旧、客厅新刷漆新地毯） | 矩阵 L-D14397815 的 D1（Condition），Nemotron VL 读挂牌照片 |
+| Day Avenue 的风格 warm timber · coastal · minimalist | runs/style_facts.jsonl，L-D14397815 第 02 张照片的 style_words |
 | 61 places pass the basics | take3 网页实际台词（数字随房源变化，录的时候是多少就是多少） |
 | Muller Lane 比邮编 2020 两房新租约中位数 1050 低 14% | NSW Fair Trading 押金登记（CC BY 4.0），data/public/nsw_bond_rents.csv |
 | 风格匹配：Nemotron 读地板、配色、光线、年代，每套房一个分数 + 相同 / 不同的地方，不进排名 | src/photo/style.py（match：按属性加权算百分比）；页面 static/qi/style-match.js（面板、`Style NN%` 角标）+ property-detail.js 的 Style match 行（Matches / Misses / Basis）；runs/style_facts.jsonl 里 480 套房的挂牌照片已预读；面板写着 “Soft preference — not used for ranking”；读图先问 Nightshift、被拒后直连 NVIDIA |
@@ -206,7 +202,7 @@
 - [x] Day Avenue 照片和详情页；Muller Lane 的核对表（take3 有）
 - [ ] 特点 1 真语音：租客两句的音频（真人录或 AI），8631 上用假麦克风重录
 - [ ] 特点 5：一张“喜欢的房间”照片（团队自己拍或免版权图），然后在房源墙上录上传 → 出分 → 打开 Style match 那一行
-- [ ] 开场数字卡、五张特点标题卡、赞助商示意图：我来做
+- [ ] 五张特点标题卡、赞助商示意图、收尾闪回：我来做
 - [ ] Nightshift 窗口截图（Lane = Nemotron 3.5 Lightning + 一条调用记录）：超亮截，或者允许我操作电脑截
 - [ ] 旁白：真人录，或先用 AI 声音
 
