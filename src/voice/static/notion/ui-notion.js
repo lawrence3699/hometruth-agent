@@ -331,8 +331,8 @@ window.HTUI = (() => {
     /* ---------- controls ---------- */
     const submit = (t) => { el.text.value = t; typing.sync(); el.composer.requestSubmit(); };
     /* ---------- the floating conversation panel (qi/conversation-panel.js): the same component as the previous design. It owns a second
-       Orb at 160 px; it opens on the first turn (voice view when the mic is on), the Chat button in the window bar reopens it, and
-       its launcher shows bottom-right once the hero is scrolled away ---------- */
+       Orb at 160 px; it stays shut when a conversation starts (the listing card is the point), the Chat button in the window bar opens
+       it, and its launcher (Ask HomeTruth) shows bottom-right once the hero is scrolled away ---------- */
     const micOn = () => el.micBtn.classList.contains('on');
     const panel = createConversationPanel({
       anchor: $('#hero'), onSubmit: submit, onVoiceToggle: () => el.micBtn.click(),
@@ -799,7 +799,7 @@ window.HTUI = (() => {
       },
       userSaid(t) {
         ui.transcript(t, false); panel.setDraft(''); panel.appendTurn('user', t); joinTurn = false;
-        if (stage === 'home') { setStage('talk'); panel.open({ view: micOn() ? 'voice' : 'chat' }); }
+        if (stage === 'home') setStage('talk');  // the chat panel stays shut so the listing card is in view; Ask HomeTruth / Chat open it
       },
       error(m) { el.caption.classList.remove('hint', 'dim'); el.caption.innerHTML = `<span class="error">${esc(m)}</span>`; html.dataset.phase = 'error'; setOrb('error'); panel.setState('error'); },
       latency(a, b) { meta('latency', a == null && b == null ? '' : `First event ${a == null ? '–' : a + ' ms'} · first word ${b == null ? '–' : b + ' ms'}`); },
