@@ -15,7 +15,7 @@ const S = {
   turnT0: 0, firstEventMs: null, firstAudioMs: null, events: 0, micOn: false, pausedForUser: false, holdForFinal: false,
   resumeTimer: null, recog: null, recogWanted: false, speechStartT: 0, lastTurnText: '', interruptedFlag: false,
   lastBusy: null, pauseGuard: null,  // lastBusy: the server's last thinking/searching state, shown again between sentences while it is still working
-  beatDone: null, beatTimer: null, stoppedAt: null, headphonesTouched: false, duckTimer: null,
+  beatDone: null, beatTimer: null, stoppedAt: null, headphonesTouched: false, duckTimer: null, quietAt: 0,
 };
 // 10-28 (docs/12): duck-on-double-talk in speakers mode is on unless ?duck=0 or localStorage ht_duck=0
 const DUCK = (() => { try { if (/[?&]duck=0\b/.test(location.search)) return false; return localStorage.getItem('ht_duck') !== '0'; } catch (e) { return true; } })();
@@ -132,6 +132,7 @@ const player = {
   },
   get audio() { return this.buffer ? { currentTime: this.pausedFlag ? this.pauseOffset : actx.currentTime - this.startedAt, duration: this.buffer.duration, paused: this.pausedFlag, ended: false } : null; },
   pause() {
+    if (S.playing) S.quietAt = performance.now();  // the recogniser may still deliver our last words for a moment (stripEcho)
     if (this.src && this.buffer && !this.pausedFlag) { this.pausedFlag = true; this.pauseOffset = Math.max(0, actx.currentTime - this.startedAt); clearTimeout(this.guard); try { this.src.stop(); } catch (e) {} }
     if (window.speechSynthesis && speechSynthesis.speaking) speechSynthesis.pause();
   },
@@ -140,6 +141,7 @@ const player = {
     if (window.speechSynthesis && speechSynthesis.paused) speechSynthesis.resume();
   },
   stop() {
+    if (S.playing) S.quietAt = performance.now();
     const d = this.done; this.pausedFlag = false; clearTimeout(this.guard);
     if (this.src) { const s = this.src; this.src = null; try { s.stop(); } catch (e) {} }
     if (d) d();
@@ -234,9 +236,9 @@ async function speak(ev, gen) {
   S.currentSay = ev; S.lastSaid = ev.text; ui.caption(ev.text);
   let blob = null; try { blob = await ev._audio; } catch (e) { blob = null; }
   if (gen !== S.gen) { S.currentSay = null; return; }
-  ui.phase('speaking', 'Speaking'); S.playing = true;
+  ui.phase('speaking', 'Speaking'); S.playing = true; rememberSaid(ev.text);
   if (blob) await player.play(blob); else await speakBrowser(ev.text);
-  S.playing = false;
+  S.playing = false; saidEnded();
   if (gen !== S.gen) return;
   if (ev.idx != null) S.spokenIdx = ev.idx;
   S.currentSay = null;
@@ -296,24 +298,56 @@ function onSpeechEnd(durMs) {  // standard 5: short noises resume unless a real 
 }
 function falseAlarm() { clearTimeout(S.pauseGuard); S.pausedForUser = false; S.holdForFinal = false; duck(false); player.resume(); if (busy()) ui.phase('speaking', 'Speaking'); }
 const isFiller = (t) => { const w = tokens(t); return w.length > 0 && w.every((x) => FILLERS.has(x)); };
-function isEcho(t) {  // standard 3: what we hear that matches what we just said is our own voice
-  const w = tokens(t); if (w.length < 3) return false;
-  const said = new Set([...tokens(S.currentSay ? S.currentSay.text : ''), ...tokens(S.lastSaid)]);
-  const hit = w.filter((x) => said.has(x)).length; return hit / w.length >= 0.6;
+/* standard 3, 10-28 rework: our own voice as the recogniser hears it through speakers. Its finals lag the audio by 1–3 s and often run
+   two of our sentences together (since docs/12 every sentence is its own say), so comparing with the current sentence only let our
+   own words through as the renter's ("it keeps hearing itself"). Now: every sentence of the last 15 s, matched by word pairs; a final
+   that starts with our voice and goes on with the renter's keeps only the renter's part. */
+const SAID = [];  // {w: Set(words), bi: Set(word pairs), end: performance.now() when it finished, null while it plays}
+const pairsOf = (w) => w.slice(1).map((x, i) => w[i] + ' ' + x);
+function rememberSaid(text) { const w = tokens(text); SAID.push({ w: new Set(w), bi: new Set(pairsOf(w)), end: null }); if (SAID.length > 12) SAID.shift(); }
+function saidEnded() { const now = performance.now(); SAID.forEach((s) => { if (s.end === null) s.end = now; }); S.quietAt = now; }
+const recentSaid = (ms) => { const now = performance.now(); return SAID.filter((s) => s.end === null || now - s.end < ms); };
+const STOPW = new Set(['the', 'a', 'an', 'it', 'its', "it's", 'is', 'are', 'be', 'to', 'of', 'and', 'or', 'in', 'on', 'at', 'for', 'with', 'that', 'this', 'there', 'you', 'your', 'i', 'me', 'my', 'we', 'our', 'so', 'do', 'does', 'what', 'how', 'about', 'one', 'just', 'can', 'any']);
+function stripEcho(t) {  // → the part of a transcript that is not our own voice ('' = all of it was ours)
+  const words = (t || '').trim().split(/\s+/).filter(Boolean), w = words.map((x) => tokens(x).join(''));
+  const rec = recentSaid(15000); if (!rec.length || !words.length) return words.join(' ');
+  const pair = (a, b) => rec.some((s) => s.bi.has(a + ' ' + b));
+  const echo = w.map((x, i) => !x || (i > 0 && pair(w[i - 1], x)) || (i + 1 < w.length && pair(x, w[i + 1])));
+  const live = S.playing && !S.pausedForUser, fresh = live || performance.now() - S.quietAt < 2500;
+  if (echo.every(Boolean) && (fresh || words.length >= 5)) return '';
+  if (el.headphones.checked) return words.join(' ');  // no echo path through headphones: only a word-for-word replay is ours
+  const all = words.map((_, i) => i);
+  let keep = all.filter((i) => !echo[i]);
+  if (!fresh) {  // quiet for a while: drop only a leading run of ours (a final that began during our last sentence); a short phrase of ours said back is the renter's
+    let k = 0; while (k < w.length && echo[k]) k++;
+    keep = (k >= 3 && k < w.length) ? all.slice(k) : all;
+  }
+  if (fresh) {
+    const kw = keep.map((i) => w[i]).filter(Boolean), just = recentSaid(4000);
+    const command = kw.some((x) => COMMAND_WORDS.has(x) && !just.some((s) => s.w.has(x)));
+    if (!command) {
+      const content = kw.filter((x) => !STOPW.has(x));
+      const ours = (x) => just.some((s) => s.w.has(x) || (/^\d+$/.test(x) && [...s.w].some((y) => /^\d+$/.test(y) && y.endsWith(x))));
+      if (!content.length || content.filter(ours).length / content.length >= 0.5) return '';  // our own words, misheard
+      if (live && kw.length < 3) return '';  // a stray word or two while we talk through speakers: not enough to stop for (tap the orb or say "stop")
+    }
+  }
+  return keep.map((i) => words[i]).join(' ');
 }
-const COMMAND_WORDS = new Set(['stop', 'pause', 'wait', 'next', 'skip']);
+const COMMAND_WORDS = new Set(['stop', 'pause', 'wait', 'next', 'skip', 'hold', 'hang']);
 function handleInterim(t) {
-  ui.transcript(t, true);
-  const w = tokens(t);
-  // 10-28: a one-word command stops us at once (no waiting for the browser to decide you finished), unless it is a word we are saying ourselves
-  const command = w.length === 1 && COMMAND_WORDS.has(w[0]) && !new Set(tokens(S.currentSay ? S.currentSay.text : '')).has(w[0]);
-  if (busy() && (command || (w.length >= 2 && !isFiller(t) && !isEcho(t)))) { S.holdForFinal = true; if (!S.pausedForUser) { clearTimeout(S.resumeTimer); player.pause(); duck(false); S.pausedForUser = true; armPauseGuard(); ui.phase('listening', 'Go ahead'); } }
+  const mine = stripEcho(t); ui.transcript(mine, true);
+  const w = tokens(mine);
+  // 10-28: a one-word command stops us at once (no waiting for the browser to decide you finished); stripEcho already dropped one we said ourselves
+  const command = w.length === 1 && COMMAND_WORDS.has(w[0]);
+  if (busy() && (command || (w.length >= 2 && !isFiller(mine)))) { S.holdForFinal = true; if (!S.pausedForUser) { clearTimeout(S.resumeTimer); player.pause(); duck(false); S.pausedForUser = true; armPauseGuard(); ui.phase('listening', 'Go ahead'); } }
 }
 function handleFinal(t) {
-  ui.transcript(t, false); if (!t) return;
-  if (isEcho(t)) { if (S.pausedForUser) falseAlarm(); return; }
-  if (busy()) { if (isFiller(t)) { if (S.pausedForUser) falseAlarm(); S.holdForFinal = false; return; } commitInterrupt(t); return; }
-  sendTurn(t, 'voice');
+  if (!t) return;
+  const mine = stripEcho(t); ui.transcript(mine, false);
+  if (!tokens(mine).length) { if (S.pausedForUser) falseAlarm(); return; }  // all of it was our own voice
+  if (busy()) { if (isFiller(mine)) { if (S.pausedForUser) falseAlarm(); S.holdForFinal = false; return; } commitInterrupt(mine); return; }
+  sendTurn(mine, 'voice');
 }
 function talkNow() {  // 10-28: tap the orb (or Space) while it talks = "let me speak": stop the voice now and listen; the mic comes on if it was off
   clearTimeout(S.resumeTimer); endBeat(); player.pause(); duck(false); S.pausedForUser = true; S.holdForFinal = true; armPauseGuard(); ui.interrupt(); ui.phase('listening', 'Go ahead');
