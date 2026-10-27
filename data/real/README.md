@@ -32,3 +32,13 @@
 - **照片**：`photos/<id>/NN.webp`（Domain）、`photos/R<id>/NN.webp`（REA）是页面里打包的原图（不进 git）；`prep/NN.jpg` 进私有仓库（卡片房源缩到 800 边、JPEG 72，每张约 50 KB；全部 prep 共 707 张 41 MB）。
 - **卡片没有的东西一律未知**：正文、可入住日（A4 → 未知、硬条件“待确认”）、押金、宠物、空调、账单、户型图——变成该问中介的问题；理由写 "The search card doesn't mention …"，不说“挂牌没写”。
 - **真实市场租金**：每套房 A1 多一条 NSW Fair Trading 押金登记的证据（`data/public/nsw_bond_rents.csv`，2026 年 4–9 月 14.3 万份新租约，按邮编 × 房型 × 卧室数的中位数，n < 10 不用）：300 套有。
+
+## 10-27 傍晚：超亮存的单套详情页（“我把想演示的房源详情页存到下载里，存好你就导入”）
+
+- **来源**：超亮在自己的 Chrome 里打开 realestate.com.au 单套房源页、Cmd+S 存成 `REA property <编号>.mhtml`（到 10-27 傍晚 130 个，几乎都在 Mascot）。程序仍然不访问网站，只读这些文件。
+- **解析**：`scripts/import_saved_pages.py details`。标题拆地址（中介塞在单元号前的 "Fully Furnish-"、写在单元号位置的 "3B2B" / "Studio" 去掉并在 `address_note` 里说明）、价格、卧室 / 卫生间 / 车位（没写车位 = 未知，不当 0）、“Available now / Available 08 Feb 2027”（now 记成保存那天）、标题、整段描述（og:description）、设施清单、中介公司、相册张数。相似房源轮播（enquiry-form 之后）不读。
+- **跳过的**：“address available on request” 没有门牌的、卧室数页面自相矛盾的（标题 1 卧、结构化数据 0 卧）、Nominatim 查不到门牌的（Church St / Church Road 三套；不拿区中心冒充）。
+- **照片**：详情页只打包了相册头一张大图（800×600）和两三张 360×270 缩略图；户型图也只有 360×270 缩略图。缩略图照样给看图模型读房间，但**户型图缩略图不读**（看不清尺寸和指北针，免得模型照着糊图编），K2–K4 / 朝向写 “Only a small thumbnail of the floor plan was saved”。avif 缩略图转成 webp 存。
+- **联系方式打码**：描述里中介留的手机号、微信 / WhatsApp 号、邮箱换成 `[contact removed]`（演示站公开，不转贴个人联系方式；中介公司名照留）。
+- **同一地址两条挂牌**（Kent Rd 的 L6A / L6B 各两条，价格不同）：都留，导入时打印提醒。
+- **结果**：121 套详情页房源（`data/real/rea/<id>.json`，没有 card_only，`saved_page` 记来源文件），加上原来 306 套，共 427 套真房源。

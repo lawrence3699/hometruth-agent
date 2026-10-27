@@ -360,6 +360,10 @@ def plans(o: dict, provider: Optional[str], force: bool, readings: Optional[Dict
     for i in floorplan_slides(o, readings):
         if not slide_file(o, i, prep=True).exists():
             continue
+        s = o["slides"][i - 1]
+        if s.get("thumb"):  # 详情页只打包了户型图的缩略图（360x270）：房间尺寸和指北针都看不清，不问模型，免得它照着糊图编
+            say(f"plan {lid(o)}: slide {i} is only a {s.get('w')}x{s.get('h')} thumbnail of the floor plan, too small to read")
+            continue
         if done and done.get("file") == file_key(o, i) and not force:
             say(f"plan {lid(o)}: already read on {done['ts'][:10]}")
             return done
@@ -680,7 +684,10 @@ def build_one(o: dict, readings: Dict[str, dict], plan: Optional[dict]) -> dict:
     plan_listed = floorplan_slides(o, readings)  # 挂牌 / 卡片上标了户型图的 slide（卡片没标时：读图说是户型图的那张）
     plan_slides = [i for i in plan_listed if slide_file(o, i, prep=True).exists()]  # 有户型图文件但还没读的（plan 为 None）
     # 没有户型图时怎么说：挂牌页的 slides 是全的，没标就是"挂牌上没有"；搜索卡片只带几张图，图还没读过就是"还没查"，读过了才说"读过的照片里没有"
-    if plan_listed:
+    if plan_listed and all((o["slides"][i - 1] or {}).get("thumb") for i in plan_listed):
+        no_plan = ("Only a small thumbnail of the floor plan was saved, too small to read.", "floor plan saved only as a thumbnail",
+                   "Only a small thumbnail of the floor plan was saved, so {label} can't be checked. Ask the agent for the full plan.")
+    elif plan_listed:
         no_plan = ("The floor plan hasn't been read yet.", "floor plan not read yet", "The floor plan hasn't been read yet, so {label} can't be checked.")
     elif card and not readings:
         no_plan = ("The search card's photos haven't been checked for a floor plan yet.", "photos not checked for a floor plan yet",

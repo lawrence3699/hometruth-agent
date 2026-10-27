@@ -41,6 +41,31 @@ def rea_card(rid, line1, suburb, pc, price):
             f'<li aria-label="1 car space"></li><p class="Text__Typography-sc">Unit</p></ul></article>'), img.replace("800x600", "800x600-format=webp")
 
 
+def rea_detail_page(rid, title_line1, suburb, pc, price, avail="Available now", rooms="2 bedrooms 1 bathroom 1 car space"):
+    """realestate.com.au 单套详情页的骨架：标题、价格、入住、描述（og:description）、设施、头图 + 缩略图 + 户型图缩略图、中介、相似房源。"""
+    h = lambda k: f"{rid}{k}".rjust(64, "0")[-64:]
+    imgs = [f"https://i2.au.reastatic.net/800x600-format=webp/{h(1)}/image.jpg", f"https://i2.au.reastatic.net/360x270-format=avif/{h(2)}/image.jpg",
+            f"https://i2.au.reastatic.net/360x270-format=avif/{h(3)}/image.jpg"]
+    page = (f'<html><head><title data-rh="true">{title_line1}, {suburb}, NSW {pc} - Apartment for Rent - realestate.com.au</title>'
+            f'<meta property="og:description" content="Bright corner unit.&lt;br/&gt;&lt;br/&gt;Walk to the light rail.&lt;br/&gt;" ></head><body>'
+            f'<div data-testid="HeroMosaic"><div role="button" tabindex="0" aria-label="Preview property images, {title_line1}"><picture>'
+            f'<source srcset="{imgs[0]}"><img alt="x, image 1 of 9" src="{imgs[0].replace("-format=webp", "")}"></picture></div>'
+            f'<span data-testid="countIcon" class="media-type-bar__count">9</span><span data-testid="countIcon" class="media-type-bar__text">Images</span></div>'
+            f'<div data-testid="hero-thumbnails"><div role="button" aria-label="Preview property image 2 of 9" tabindex="0"><picture>'
+            f'<source srcset="{imgs[1]}" type="image/avif"><img src="{imgs[1].replace("-format=avif", "")}"></picture></div></div>'
+            f'<ul aria-label="Apartment  with {rooms}"><li aria-label="2 bedrooms"></li></ul>'
+            f'<span class="property-price property-info__price">{price}</span><div class="property-info__footer-content"><p class="T">{avail}</p></div>'
+            f'<div data-testid="PropertyDescription"><h2 class="T">SUNNY CORNER UNIT</h2></div>'
+            f'<div data-testid="all-property-features-section" class="S"><div><h3>Rental information</h3><div><p>Pets allowed</p></div></div>'
+            f'<div><h3>Heating &amp; cooling</h3><div><p>Split-system air con</p></div></div></div><button>Show less</button>'
+            f'<div class="floorplans-tours"><picture><source srcset="{imgs[2]}" type="image/avif"><img alt="Property floorplan" src="{imgs[2].replace("-format=avif", "")}"></picture></div>'
+            f'<div class="contact-agent-panel"><div class="styles__AgencyOrProjectNonLink-sc-1 x">Sample Agency</div><small>1 Ellery Place, NSW 2000</small></div>'
+            f'<div data-testid="enquiry-form"></div>'
+            f'<ul aria-label="Apartment  with 4 bedrooms"><span class="property-price">$2,000 per week</span>'  # 相似房源：不能读进来
+            f'<a class="LinkBase styles__AgencyOrProjectNameLink-sc-1 y">Other Agency</a></ul></body></html>')
+    return page, imgs, f"https://www.realestate.com.au/property-apartment-nsw-{suburb.lower()}-{rid}"
+
+
 def mhtml(page, images, origin):
     """和 Chrome 存的单文件网页同样的结构：multipart/related，第一段是 HTML，后面是图片（这里都用 base64）。"""
     b = "----MultipartBoundary--test"
@@ -101,6 +126,38 @@ class SavedPages(unittest.TestCase):
         self.assertTrue(all(s.get("embedded") for s in L["slides"]))
         json.dumps(L)
 
+    def test_detail_page_becomes_a_rich_listing(self):
+        d = self.tmp / "details"
+        d.mkdir()
+        page, imgs, origin = rea_detail_page(902000001, "A-Fully Furnish-L6A/39-41 ALDER LANE", "Redfern", "2016", "$900 per week")
+        (d / "REA property 902000001.mhtml").write_text(mhtml(page, imgs, origin), encoding="utf-8")
+        page, imgs, origin = rea_detail_page(902000002, "3B2B/6 Dunmore Row", "Redfern", "2016", "$1,200 per week", avail="Available 08 Feb 2027")
+        (d / "REA property 902000002.mhtml").write_text(mhtml(page, imgs, origin), encoding="utf-8")
+        page, imgs, origin = rea_detail_page(902000003, "Redfern - address available on request", "Redfern", "2016", "$800 per week")
+        (d / "REA property 902000003.mhtml").write_text(mhtml(page.replace("<title data-rh=\"true\">Redfern - address available on request, Redfern, NSW 2016",
+                                                                          "<title>Redfern - address available on request"), imgs, origin), encoding="utf-8")
+        cards, blobs = isp.parse_details([d])
+        by = {c["id"]: c for c in cards}
+        self.assertEqual(set(by), {902000001, 902000002})  # 没地址的那页跳过
+        c = by[902000001]
+        self.assertEqual((c["line1"], c["suburb"], c["postcode"], c["beds"], c["baths"], c["parking"], c["agency"]),
+                         ("L6A/39-41 Alder Lane", "Redfern", "2016", "2", "1", "1", "Sample Agency"))
+        self.assertIn("ad words", c["line1_note"])
+        self.assertEqual(isp.weekly(c["price"]), 900)  # 不是相似房源的 $2,000
+        self.assertEqual((c["headline"], c["description"], c["features"]), ("SUNNY CORNER UNIT", ["Bright corner unit.", "", "Walk to the light rail."], ["Pets allowed", "Split-system air con"]))
+        self.assertEqual([(s["type"], s["w"]) for s in c["slides"]], [("image", 800), ("image", 360), ("floorplan", 360)])
+        self.assertEqual(c["availableText"], "Available now")
+        self.assertEqual(by[902000002]["availableFrom"], "2027-02-08")
+        self.assertEqual(by[902000002]["line1"], "6 Dunmore Row")  # '3B2B' 是卧室 / 卫生间，不是单元号
+        c.update(lat=-33.89, lng=151.20, geocode={"source": "test", "precision": "street", "query": "x"})
+        L = isp.to_listing(c)
+        self.assertNotIn("card_only", L)
+        self.assertEqual(L["stats"]["availableFrom"], c["availableFrom"])
+        self.assertEqual([(s["type"], s["thumb"]) for s in L["slides"]], [("image", False), ("image", True), ("floorplan", True)])
+        self.assertIn("listing page saved by the user", L["source"])
+        self.assertEqual(isp.as_webp(isp.as_webp(PNG))[:4], b"RIFF")
+        json.dumps(L)
+
     def test_address_splitting(self):
         self.assertEqual(isp.split_address("Unit 4/9 Alder Lane"), ("4", "9", "Alder Lane"))
         self.assertEqual(isp.split_address("A309/25 Caldera Avenue"), ("A309", "25", "Caldera Avenue"))
@@ -109,6 +166,15 @@ class SavedPages(unittest.TestCase):
         self.assertIsNone(isp.split_address("WeChat: X L2/ 8 Alder Lane"))
         self.assertIsNone(isp.split_address("Fully Furnished-L1D/107 Alder Lane"))
         self.assertIsNone(isp.split_address("Ellery Place"))
+        self.assertEqual(isp.split_address("L1+2A/109-123 Fenwick St"), ("L1+2A", "109-123", "Fenwick St"))
+        self.assertEqual(isp.clean_line1("FullyFurnish-L1D/107 Alder Lane")[0], "L1D/107 Alder Lane")
+        self.assertEqual(isp.tidy_street("2B/12 Caldera road", None)[0], "2B/12 Caldera Road")
+
+    def test_redact_contacts(self):
+        self.assertEqual(isp.redact("Call 0400 000 000 or VX: +61 400000000, WeChat：sample_id9"),
+                         "Call [contact removed] or VX: [contact removed], WeChat：[contact removed]")
+        self.assertEqual(isp.redact("Email jo@example.com today"), "Email [contact removed] today")
+        self.assertEqual(isp.redact("10-12 Fenwick Street, $1,100 per week, built 2019"), "10-12 Fenwick Street, $1,100 per week, built 2019")
 
     def test_weekly(self):
         self.assertEqual(isp.weekly("$1,050 per week"), 1050)

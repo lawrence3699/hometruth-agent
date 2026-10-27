@@ -69,7 +69,13 @@ class Stages(unittest.TestCase):
 
     def test_matrix_has_no_inspection_report_and_sources_are_relabelled(self):  # (b) (d)
         raw = MATRIX.read_text(encoding="utf-8")
-        self.assertNotIn("inspection", raw.lower())
+        # 真房源的挂牌原文（中介自己写的 "contact for inspection"）不算我们造的"验房报告"材料：只查原文以外的部分
+        own = json.loads(raw)
+        for L in own["listings"]:
+            if str(L["id"]).startswith(("L-D", "L-R")):
+                for k in ("headline", "description", "special", "features"):
+                    L.pop(k, None)
+        self.assertNotIn("inspection", json.dumps(own).lower())
         for src in policy.SOURCES:
             self.assertNotIn("inspection", src["label"].lower())
         docs = next(s for s in policy.SOURCES if s["name"] == "documents")

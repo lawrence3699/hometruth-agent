@@ -10,7 +10,7 @@
 | zetaris/03_register_own_bucket.sql.template | 注册我们自己桶里的 CSV 的模板，私有桶和公开桶两种写法 | 复制成 .sql 填好再 `--file` |
 | zetaris/09_drop_smoke.sql | 删 smoke 表和库 | `--file` |
 | domain_sample.py | 真房源样本（data/real/domain/*.json）→ 矩阵房源：下载 / 缩图照片、Nemotron VL 读照片（新旧 D1）和户型图（朝向、K2–K4）、太阳几何（E2）、Domain 中位租金、直线距离估通勤；写进 src/voice/mock_matrix.json（docs/09） | `python3 scripts/domain_sample.py all`；`build --dry` 只打印 |
-| import_saved_pages.py | 用户在自己浏览器里存的 Domain / realestate.com.au 搜索结果页（.mhtml）→ 卡片房源 JSON + 打包的照片；挑演示集、按地址查坐标（Nominatim）；不访问两家网站 | `.venv/bin/python scripts/import_saved_pages.py all --domain 200 --rea 100`（`--dry` 只看） |
+| import_saved_pages.py | 用户在自己浏览器里存的 Domain / realestate.com.au 搜索结果页（.mhtml）→ 卡片房源 JSON + 打包的照片；挑演示集、按地址查坐标（Nominatim）；`details` 读 realestate.com.au 单套详情页（`REA property <编号>.mhtml`）→ 带描述 / 设施 / 入住日期的房源，联系方式打码；不访问两家网站 | `.venv/bin/python scripts/import_saved_pages.py all --domain 200 --rea 100`；详情页 `… details`（`--dry` 只看） |
 | domain_import.py | 同上，但读含 `__NEXT_DATA__` / `ArgonautExchange` 的 .html 源码页（搜索页和单套详情页都行）；和 import_saved_pages 别对同一批编号都跑 | `.venv/bin/python scripts/domain_import.py ~/Downloads --dry` |
 | nsw_bonds.py | NSW Fair Trading 押金登记月度 xlsx → data/public/nsw_bond_rents.csv（邮编 × 房型 × 卧室的中位数和四分位） | `.venv/bin/python scripts/nsw_bonds.py` |
 | agent_reply.py | 往某位租客的收件箱放一条中介回复（演示用 webhook；docs/08） | `python3 scripts/agent_reply.py --renter <id> --listing L-0001 --text "…"` |

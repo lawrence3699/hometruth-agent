@@ -30,6 +30,7 @@ import email
 import html
 import json
 import re
+import shutil
 import sys
 import time
 import urllib.parse
@@ -61,7 +62,8 @@ def read_mhtml(path: Path) -> Tuple[str, Dict[str, bytes], str]:
     for part in msg.walk():
         ct = part.get_content_type()
         if ct == "text/html" and not page:
-            page = re.sub(r"<!--.*?-->", "", part.get_content(), flags=re.S)  # React 在数字和单位之间插的 <!-- --> 会挡住正则
+            raw = part.get_payload(decode=True) or b""  # Chrome 存的 HTML 部分不写 charset，按默认解码 é 会变 ��；页面本身是 UTF-8
+            page = re.sub(r"<!--.*?-->", "", raw.decode(part.get_content_charset() or "utf-8", "replace"), flags=re.S)  # React 在数字和单位之间插的 <!-- --> 会挡住正则
             origin = origin or str(part.get("Content-Location") or "")
         elif ct.startswith("image/"):
             loc = str(part.get("Content-Location") or "")
@@ -97,7 +99,7 @@ def split_address(line1: str) -> Optional[Tuple[str, str, str]]:
     s = re.sub(r"^(?:level|lvl)\s*\d+\s*,?\s*", "", line1.strip(), flags=re.I)
     if re.search(r"wechat|furnish|car ?space|whatsapp|studio\s*/|^\D*:", s, re.I):
         return None  # 中介把广告词塞进地址行的（"WeChat: …"、"Fully Furnished-L1D/…"）：地址不可信，不要
-    m = re.match(r"^(?:(?:unit|apt|apartment)\s*)?(?:(?P<unit>[A-Za-z]{0,2}\d+(?:\.\d+)?[A-Za-z]?|[A-Z]\d*)\s*/\s*)?(?P<num>\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?)\s+(?P<street>[A-Za-z].+)$", s, re.I)
+    m = re.match(r"^(?:(?:unit|apt|apartment)\s*)?(?:(?P<unit>[A-Za-z]{0,2}\d+(?:\.\d+)?[A-Za-z]?(?:\+[A-Za-z]?\d+[A-Za-z]?)?|[A-Z]\d*)\s*/\s*)?(?P<num>\d+[A-Za-z]?(?:\s*-\s*\d+[A-Za-z]?)?)\s+(?P<street>[A-Za-z].+)$", s, re.I)
     if not m:
         return None
     return (m.group("unit") or "", m.group("num").replace(" ", ""), m.group("street").strip())
@@ -175,6 +177,159 @@ def rea_cards(page: str, images: Dict[str, bytes], src: Path) -> Iterable[dict]:
                "suburb": url.group(3).replace("+", " ").title(), "postcode": pc.group(1) if pc else "", "beds": beds.group(1) if beds else ("0" if studio or "studio" in " ".join(ptxt).lower() or "studio" in url.group(2) else None),
                "baths": baths.group(1) if baths else None, "parking": cars.group(1) if cars else None, "type": (ptxt[-1] if ptxt else url.group(2).replace("+", " ")),
                "agency": html.unescape((agency.group(1) or agency.group(2)) if agency else ""), "tags": [], "gallery_count": None, "slides": slides, "saved_page": src.name}
+
+
+# ---------------------------------------------------------------- realestate.com.au 单套详情页（10-27 晚：超亮挑来演示的那几套）
+AD_WORDS = re.compile(r"furnish|wechat|whatsapp|car ?space", re.I)
+THUMB_SIDE = 600  # 长边不到这个数的图是缩略图（详情页只打包相册头一张大图，其余是 360x270 小图）：照片照读，户型图读不出尺寸
+
+
+def clean_line1(line1: str) -> Tuple[str, Optional[str]]:
+    """标题地址行 → (能拆的地址行, 改动说明)。'A-Fully Furnish-L6A/39-41 KENT RD' → 'L6A/39-41 Kent Rd'：
+    广告词在单元号前面、用 '-' 隔开，去掉它；门牌和街名照原样，只把全大写改成首字母大写。拆不出来就原样返回（后面会被筛掉）。"""
+    if split_address(line1) or "/" not in line1:
+        return line1, None
+    left, right = line1.split("/", 1)
+    if re.fullmatch(r"\s*(?:\d\s*B\s*\d\s*B|studio|\d\s*-?\s*bed(?:room)?s?)\s*", left, re.I) and split_address(right.strip()):
+        # '3B2B/6 Etherden Walk'、'Studio /5-11 Ewan St'、'1 - Bedroom /…'：单元号的位置写的是房型
+        return right.strip(), f"the agent's title has {left.strip()!r} (the room type) where the unit number goes; unit number unknown"
+    unit = left.split("-")[-1].strip()
+    if not unit or AD_WORDS.search(unit) or not re.search(r"\d|^[A-Z]$", unit):
+        return line1, None
+    right = re.sub(r"\s+", " ", right).strip()
+    if right.isupper():
+        right = re.sub(r"[A-Za-z']+", lambda m: m.group(0).capitalize(), right.lower())
+    right = re.sub(r"\b(st|rd|ave|pde|ln|pl|dr|cres|ct)\b\.?$", lambda m: m.group(1).capitalize(), right)  # 'Botany rd' → 'Botany Rd'
+    if not split_address("1 " + right.split(" ", 1)[-1]) or not re.match(r"\d", right):
+        return line1, None
+    return f"{unit}/{right}", f"the agent's title has ad words before the unit number ({line1!r}); the address is the part after them"
+
+
+CHAT_ID = re.compile(r"((?<![A-Za-z])(?:we ?chat|vx|wx|微信|whats ?app|qq|telegram)(?![A-Za-z])\s*(?:id)?\s*[:：]?\s*)(?!\[)([A-Za-z0-9_.+-]{3,})", re.I)
+PHONE = re.compile(r"[+0]\(?\d[\d\s()-]{7,}\d")
+EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+REDACTED = "[contact removed]"
+
+
+def redact(s: str) -> str:
+    """挂牌原文里中介留的手机号、微信 / WhatsApp 号、邮箱换成 [contact removed]：演示站是公开的，不转贴个人联系方式（中介公司名照留）。"""
+    s = EMAIL.sub(REDACTED, s or "")
+    s = PHONE.sub(lambda m: REDACTED if sum(ch.isdigit() for ch in m.group(0)) >= 9 else m.group(0), s)
+    return CHAT_ID.sub(lambda m: m.group(1) + REDACTED, s)
+
+
+def tidy_street(line1: str, note: Optional[str]) -> Tuple[str, Optional[str]]:
+    """'2B/12 Church road' → '2B/12 Church Road'：中介手打的小写街名词首字母大写，其他不动。"""
+    parts = split_address(line1)
+    if not parts:
+        return line1, note
+    street = " ".join(w[:1].upper() + w[1:] if w.isalpha() and w.islower() else w for w in parts[2].split(" "))
+    return line1[: len(line1) - len(parts[2])] + street if line1.endswith(parts[2]) else line1, note
+
+
+def _largest(images: Dict[str, bytes], h: str) -> Optional[str]:
+    """同一张图（64 位哈希）在页面里可能打包了几种尺寸 / 格式：挑字节最多的那份。"""
+    pool = [u for u in images if h in u]
+    return max(pool, key=lambda u: len(images[u])) if pool else None
+
+
+def rea_detail(page: str, images: Dict[str, bytes], origin: str, src: Path) -> Optional[dict]:
+    """单套详情页 → 一张"富"卡片：卡片字段 + 标题、描述、设施、入住日期、详情页打包的全部房源照片（头图大，其余缩略图）和户型图。"""
+    lid = re.search(r"-(\d{6,12})/?$", origin) or re.search(r"Property ID:\s*(\d{6,12})", page)
+    title = re.search(r"<title[^>]*>(.*?)</title>", page, re.S)
+    mt = re.match(r"^(?P<line1>.+?),\s*(?P<suburb>[^,]+),\s*NSW\s*(?P<pc>\d{4})\s*-\s*(?P<type>.+?)\s+for\s+Rent\b", text(title.group(1)) if title else "", re.I)
+    if not (lid and mt):
+        return None
+    lid = lid.group(1)
+    main = page.split('data-testid="enquiry-form"')[0]  # 后面是"相似房源"轮播：别把别人的价格 / 卧室数 / 中介读进来
+    price = re.search(r'class="property-price[^"]*"[^>]*>(.*?)</span>', main, re.S)
+    aria = re.search(r'aria-label="[A-Za-z /-]*\s+with\s+([^"]+)"', main)
+    rooms = aria.group(1) if aria else ""
+    beds = re.search(r"(\d+)\s+bedrooms?", rooms)
+    baths = re.search(r"(\d+)\s+bathrooms?", rooms)
+    cars = re.search(r"(\d+)\s+(?:car|parking|garage) spaces?", rooms)
+    avail = re.search(r"<p[^>]*>\s*Available\s+(now|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\s*</p>", main, re.I)
+    saved = dt.datetime.fromtimestamp(src.stat().st_mtime, tz=SYD)
+    available_from, available_text = None, None
+    if avail:
+        available_text = "Available " + avail.group(1)
+        if avail.group(1).lower() == "now":
+            available_from = saved.date().isoformat()  # 页面在保存那天写"现在可入住"：日期就记保存那天
+        else:
+            for fmt in ("%d %b %Y", "%d %B %Y"):
+                try:
+                    available_from = dt.datetime.strptime(avail.group(1), fmt).date().isoformat()
+                    break
+                except ValueError:
+                    pass
+    desc_block = re.search(r'data-testid="PropertyDescription".*?<h2[^>]*>(.*?)</h2>', main, re.S)
+    og = re.search(r'<meta property="og:description" content="([^"]*)"', page)
+    body = html.unescape(og.group(1)) if og else ""
+    description = [redact(re.sub(r"\s+", " ", html.unescape(ln)).strip()) for ln in re.split(r"<br\s*/?>", body)]
+    while description and not description[-1]:
+        description.pop()
+    fsec = main.find('data-testid="all-property-features-section"')
+    features = [text(p) for p in re.findall(r"<p[^>]*>(.*?)</p>", main[fsec: fsec + 20000].split("Show less")[0], re.S)] if fsec >= 0 else []
+    agency = re.search(r'class="[^"]*styles__AgencyOrProject(?:NameLink|NonLink)[^"]*"[^>]*>([^<]+)<', main)
+    count = re.search(r'data-testid="countIcon"[^>]*>(\d+)</span><span data-testid="countIcon"[^>]*>Images<', main)
+    # 照片：头图 + 缩略图（img alt "…, image N of M" / "Preview property image N of M"），户型图（alt "Property floorplan"）
+    slides, seen = [], set()
+    for kind, pat in (("image", r'(?:aria-label="Preview property images?[^"]*"|data-testid="HeroMosaic")[^>]*>\s*<picture>(.*?)</picture>'),
+                      ("floorplan", r'<picture>((?:(?!</picture>).)*?alt="Property floorplan"(?:(?!</picture>).)*)</picture>')):
+        for pm in re.finditer(pat, main, re.S):
+            hm = re.search(r"https://i\d\.au\.reastatic\.net/[^\"' ]*?/([0-9a-f]{64})/image\.[a-z]+", pm.group(1))
+            if not hm or hm.group(1) in seen:
+                continue
+            seen.add(hm.group(1))
+            emb = _largest(images, hm.group(1))
+            size = re.search(r"reastatic\.net/(\d+)x(\d+)", emb or "")
+            slides.append({"n": len(slides) + 1, "type": kind, "url": hm.group(0), "embedded": emb,
+                           "w": int(size.group(1)) if size else None, "h": int(size.group(2)) if size else None})
+    slides.sort(key=lambda s: s["type"] == "floorplan")  # 户型图放最后，和 Domain 详情页一样
+    for k, s in enumerate(slides, 1):
+        s["n"] = k
+    line1, note = tidy_street(*clean_line1(re.sub(r"\s+" + re.escape(mt.group("suburb").strip()) + r"$", "", mt.group("line1").strip(), flags=re.I)))
+    return {"site": "rea", "id": int(lid), "url": origin, "price": text(price.group(1)) if price else "", "line1": line1, "line1_note": note,
+            "suburb": mt.group("suburb").strip(), "postcode": mt.group("pc"), "beds": beds.group(1) if beds else ("0" if re.search(r"studio", rooms + mt.group("type"), re.I) else None),
+            "baths": baths.group(1) if baths else None, "parking": cars.group(1) if cars else None, "type": mt.group("type"),  # 页面没写车位 = 未知（REA 车位为 0 时不显示，但"没显示"不等于确认没有）
+            "agency": text(agency.group(1)) if agency else "", "tags": [], "gallery_count": int(count.group(1)) if count else None,
+            "slides": slides, "saved_page": src.name, "detail": True, "headline": redact(text(desc_block.group(1))) if desc_block else "",
+            "description": description, "features": [f for f in features if f], "availableFrom": available_from, "availableText": available_text}
+
+
+def detail_files(src: List[Path]) -> List[Path]:
+    """单套详情页：文件名不像搜索结果页、页面里有 PropertyDescription 的。"""
+    out = []
+    for p in src:
+        p = p.expanduser()
+        for f in (sorted(p.glob("*.mhtml")) if p.is_dir() else [p]):
+            if f.suffix.lower() in (".mhtml", ".mht") and not re.search(r"for Rent in|Rental Properties and Real Estate|oldest-first|page \d+|Pg\. \d+", f.name, re.I):
+                out.append(f)
+    return out
+
+
+def parse_details(src: List[Path]) -> Tuple[List[dict], Dict[Tuple[str, int, int], bytes]]:
+    cards, blobs, why = [], {}, collections.Counter()
+    for f in detail_files(src):
+        page, images, origin = read_mhtml(f)
+        c = rea_detail(page, images, origin, f) if "realestate.com.au" in origin and 'data-testid="PropertyDescription"' in page else None
+        if not c:
+            r = "address available on request (no street address)" if "address available on request" in page[:3000].lower() else "not a realestate.com.au listing page"
+            print(f"detail: skip {f.name}: {r}")
+            why[r] += 1
+            continue
+        c["fetched_at"] = dt.datetime.fromtimestamp(f.stat().st_mtime, tz=SYD).isoformat(timespec="seconds")
+        r = usable(c)
+        if r:
+            print(f"detail: skip {f.name}: {r}")
+            why[r] += 1
+            continue
+        cards.append(c)
+        for s in c["slides"]:
+            if s["embedded"]:
+                blobs[(c["site"], c["id"], s["n"])] = images[s["embedded"]]
+    print(f"detail: {len(cards)} listing pages", dict(why) if why else "")
+    return cards, blobs
 
 
 # ---------------------------------------------------------------- parse / select
@@ -271,30 +426,40 @@ def select(cards: List[dict], n_domain: int, n_rea: int, existing: Dict[str, str
 
 
 # ---------------------------------------------------------------- geocode
+ROAD_FULL = {"st": "Street", "rd": "Road", "ave": "Avenue", "av": "Avenue", "pde": "Parade", "ln": "Lane", "pl": "Place", "dr": "Drive", "cres": "Crescent",
+             "ct": "Court", "hwy": "Highway", "tce": "Terrace", "cct": "Circuit", "blvd": "Boulevard"}
+
+
 def geocode(cards: List[dict], dry: bool) -> None:
     cache = json.loads(GEO_CACHE.read_text(encoding="utf-8")) if GEO_CACHE.exists() else {}
     asked = 0
     for c in cards:
         u, num, st = split_address(c["line1"])
-        q = {"street": f"{num.split('-')[0]} {st}", "city": c["suburb"], "state": "NSW", "postalcode": c["postcode"], "country": "Australia"}
-        key = f"{q['street']}|{q['city']}|{q['postalcode']}".lower()
-        if key not in cache and not dry:
-            url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(dict(q, format="jsonv2", limit=1, addressdetails=0))
-            try:
-                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=20) as r:
-                    hits = json.loads(r.read().decode("utf-8"))
-            except Exception as e:  # noqa: BLE001
-                print(f"geocode {key}: {type(e).__name__} {str(e)[:80]}")
-                hits = None
-            asked += 1
-            if hits is not None:
-                h = hits[0] if hits else None
-                cache[key] = {"lat": float(h["lat"]), "lng": float(h["lon"]), "osm_type": h.get("type"), "class": h.get("category") or h.get("class"),
-                              "addresstype": h.get("addresstype"), "display": h.get("display_name")} if h else {"miss": True}
-                cache[key]["asked_at"] = dt.datetime.now(SYD).isoformat(timespec="seconds")
-                GEO_CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-            time.sleep(1.1)  # Nominatim 用法规定：每秒最多一次
-        hit = cache.get(key) or {}
+        words = st.split(" ")
+        full = " ".join(words[:-1] + [ROAD_FULL.get(words[-1].lower().rstrip("."), words[-1])])  # 'Church St' 查不到时再试 'Church Street'
+        hit, q = {}, {}
+        for street in dict.fromkeys([st, full]):
+            q = {"street": f"{num.split('-')[0]} {street}", "city": c["suburb"], "state": "NSW", "postalcode": c["postcode"], "country": "Australia"}
+            key = f"{q['street']}|{q['city']}|{q['postalcode']}".lower()
+            if key not in cache and not dry:
+                url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(dict(q, format="jsonv2", limit=1, addressdetails=0))
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=20) as r:
+                        hits = json.loads(r.read().decode("utf-8"))
+                except Exception as e:  # noqa: BLE001
+                    print(f"geocode {key}: {type(e).__name__} {str(e)[:80]}")
+                    hits = None
+                asked += 1
+                if hits is not None:
+                    h = hits[0] if hits else None
+                    cache[key] = {"lat": float(h["lat"]), "lng": float(h["lon"]), "osm_type": h.get("type"), "class": h.get("category") or h.get("class"),
+                                  "addresstype": h.get("addresstype"), "display": h.get("display_name")} if h else {"miss": True}
+                    cache[key]["asked_at"] = dt.datetime.now(SYD).isoformat(timespec="seconds")
+                    GEO_CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+                time.sleep(1.1)  # Nominatim 用法规定：每秒最多一次
+            hit = cache.get(key) or {}
+            if hit.get("lat"):
+                break
         if hit.get("lat"):
             precise = hit.get("class") != "highway"  # 落在门牌（building / place / 某个店）= 门牌级；只对上路名（class highway）= 街道级
             c["lat"], c["lng"] = hit["lat"], hit["lng"]
@@ -317,9 +482,22 @@ def to_listing(c: dict) -> dict:
     files = []
     for s in c["slides"]:
         if s["embedded"]:
-            files.append({"type": "image", "url": s["url"], "embedded": True})
+            row = {"type": s.get("type") or "image", "url": s["url"], "embedded": True}
+            if s.get("w"):
+                row.update(w=s["w"], h=s["h"], thumb=max(s["w"], s["h"]) < THUMB_SIDE)
+            files.append(row)
     site_name = "domain.com.au" if c["site"] == "domain" else "realestate.com.au"
     beds = int(c["beds"])
+    if c.get("detail"):  # 单套详情页：标题、描述、设施、入住日期都有，不是 card_only；照片只有页面打包的那几张（头图大、其余缩略图）
+        stats = {k: v for k, v in (("availableFrom", c.get("availableFrom")), ("availableText", c.get("availableText"))) if v}
+        return {"id": c["id"], "site": c["site"], "url": c["url"], "address": f"{c['line1']}, {c['suburb']} NSW {c['postcode']}", "address_note": c.get("line1_note"),
+                "unit": u, "streetNumber": num, "street": st, "suburb": c["suburb"], "postcode": c["postcode"], "type": norm_type(c["type"]), "beds": beds,
+                "baths": int(c["baths"]) if str(c.get("baths") or "").isdigit() else None, "parking": int(c["parking"]) if str(c.get("parking") or "").isdigit() else None,
+                "price": c["price"], "stats": stats, "agency": c["agency"], "headline": c.get("headline") or "", "description": c.get("description") or [],
+                "features": c.get("features") or [], "structured": [], "tags": [], "lat": c.get("lat"), "lng": c.get("lng"), "geocode": c.get("geocode"),
+                "medianRent": None, "medianBeds": None, "created": None, "modified": None, "slides": files, "gallery_count": c.get("gallery_count"),
+                "fetched_at": c["fetched_at"], "saved_page": c["saved_page"],
+                "source": f"{site_name} listing page saved by the user in their own browser (single-file page; only the photos the page had loaded), demo use only"}
     return {"id": c["id"], "site": c["site"], "card_only": True, "url": c["url"],
             "address": f"{c['line1']}, {c['suburb']} NSW {c['postcode']}", "unit": u, "streetNumber": num, "street": st, "suburb": c["suburb"], "postcode": c["postcode"],
             "type": norm_type(c["type"]), "beds": beds, "baths": int(c["baths"]) if str(c.get("baths") or "").isdigit() else None,
@@ -328,6 +506,17 @@ def to_listing(c: dict) -> dict:
             "lat": c.get("lat"), "lng": c.get("lng"), "geocode": c.get("geocode"), "medianRent": None, "medianBeds": None, "created": None, "modified": None,
             "slides": files, "gallery_count": c.get("gallery_count"), "fetched_at": c["fetched_at"], "saved_page": c["saved_page"],
             "source": f"{site_name} search results page saved by the user in their own browser (single-file page, card only), demo use only"}
+
+
+def as_webp(data: bytes) -> bytes:
+    """详情页的缩略图是 avif / jpeg：转成 webp 存，文件名和内容对得上（卡片的图本来就是 webp，原样存）。"""
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return data
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.open(io.BytesIO(data)).convert("RGB").save(buf, "WEBP", quality=90)
+    return buf.getvalue()
 
 
 def photo_dir(L: dict) -> Path:
@@ -345,7 +534,7 @@ def write(cards: List[dict], blobs: Dict[Tuple[str, int, int], bytes], dry: bool
         dst = folder / f"{c['id']}.json"
         if dst.exists():
             old = json.loads(dst.read_text(encoding="utf-8"))
-            if not old.get("card_only"):
+            if not old.get("card_only") and not (c.get("detail") and old.get("saved_page")):  # 详情页可以盖掉卡片、也可以盖掉旧的详情页存档
                 print(f"write: keep the richer {dst.relative_to(ROOT)} (single listing page), not overwritten by card data")
                 continue
         if dry:
@@ -353,6 +542,11 @@ def write(cards: List[dict], blobs: Dict[Tuple[str, int, int], bytes], dry: bool
             continue
         folder.mkdir(parents=True, exist_ok=True)
         pdir = photo_dir(L)
+        if c.get("detail") and pdir.exists() and dst.exists() and json.loads(dst.read_text(encoding="utf-8")).get("card_only"):
+            # 详情页盖掉卡片：张数和顺序都变了，旧照片（和它们的缩图）删掉重写，免得 NN 号对上别的图。
+            # 读图记录按文件名记（runs/photo_facts.jsonl），不看内容：这套要 read --force 重读，否则会沿用卡片那几张的读法
+            shutil.rmtree(pdir)
+            print(f"write: {c['site']} {c['id']} had card photos; re-read them: scripts/domain_sample.py read --only {c['id']} --force")
         pdir.mkdir(parents=True, exist_ok=True)
         i = 0
         for s in c["slides"]:
@@ -361,11 +555,21 @@ def write(cards: List[dict], blobs: Dict[Tuple[str, int, int], bytes], dry: bool
             i += 1
             out = pdir / f"{i:02d}.webp"  # 原图（webp 字节，不进 git），prep 再缩成 JPEG
             if not out.exists():
-                out.write_bytes(blobs[(c["site"], c["id"], s["n"])])
+                out.write_bytes(as_webp(blobs[(c["site"], c["id"], s["n"])]))
         dst.write_text(json.dumps(L, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         n += 1
     print(f"write: {n} listing files {'(dry)' if dry else ''}")
     return n
+
+
+def ALL_KEYS() -> Dict[str, str]:
+    """已经写好的全部房源（卡片和详情页、两个站）：地址键 → 'domain/<id>' / 'rea/<id>'。"""
+    out = {}
+    for site in ("domain", "rea"):
+        for f in (REAL / site).glob("*.json"):
+            o = json.loads(f.read_text(encoding="utf-8"))
+            out[norm_key(str(o.get("unit") or ""), str(o.get("streetNumber") or ""), o.get("street") or "", o.get("suburb") or "")] = f"{site}/{f.stem}"
+    return out
 
 
 def existing_keys() -> Dict[str, str]:
@@ -379,13 +583,26 @@ def existing_keys() -> Dict[str, str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("step", choices=["parse", "select", "geocode", "write", "all"])
+    ap.add_argument("step", choices=["parse", "select", "geocode", "write", "all", "details"])
     ap.add_argument("--src", nargs="*", default=["~/Downloads"], help="mhtml 文件或文件夹")
     ap.add_argument("--domain", type=int, default=180)
     ap.add_argument("--rea", type=int, default=70)
     ap.add_argument("--dry", action="store_true", help="不查坐标、不写文件")
     a = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    if a.step == "details":
+        cards, blobs = parse_details([Path(p) for p in a.src])
+        for c in cards:
+            u, num, st = split_address(c["line1"])
+            dup = ALL_KEYS().get(norm_key(u, num, st, c["suburb"]))
+            if dup and dup != f"rea/{c['id']}":
+                print(f"details: {c['id']} ({c['line1']}, {c['suburb']}) is the same address as data/real/{dup}.json; both stay (check the list)")
+        geocode(cards, a.dry)
+        with (OUT / "details.jsonl").open("w", encoding="utf-8") as f:
+            for c in cards:
+                f.write(json.dumps({k: v for k, v in c.items() if k != "slides"} | {"slides": [{k: v for k, v in s_.items()} for s_ in c["slides"]]}, ensure_ascii=False) + "\n")
+        write(cards, blobs, a.dry)
+        return 0
     cards, blobs = parse([Path(p) for p in a.src])
     with (OUT / "cards.jsonl").open("w", encoding="utf-8") as f:
         for c in cards:
