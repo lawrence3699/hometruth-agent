@@ -2,7 +2,7 @@
 
 ## 分镜（约 2:00）
 
-**旁白** = 讲解的人（建议真人）；**App** = 网站自己的声音；**租客** = 演示里的用户。每个特点开头有一张 1 秒的标题卡（左上角编号 + 一句话），之后标题缩到左上角一直挂着。
+**旁白** = 讲解的人（建议真人）；**App** = 网站自己的声音；**租客** = 演示里的用户。每个特点开头有一张 1 秒的标题卡（左上角编号 + 一句话），之后标题缩到左上角一直挂着。视频里说的、屏幕上写的都是英文（评委看英文）；每句下面的“中文”和括号里的中文只是给我们看意思。
 
 ### 0 · 开场：问题（0:00–0:12）　Impact
 
@@ -12,6 +12,8 @@
 
 **旁白**：
 > This flat looks furnished. It isn't: "this advert has been digitally furnished." Of 156 full Sydney listings we read, 130 don't say which room has air con, and 134 never mention pets.
+>
+> 中文：这套房看着带家具，其实没有：照片上写着“本广告的家具是电脑摆上去的”。我们读了悉尼 156 套有完整介绍的房源，130 套没说空调在哪个房间，134 套压根没提宠物。
 
 ### 片名（0:12–0:15）
 
@@ -19,63 +21,83 @@
 
 **旁白**：
 > Meet HomeTruth: a rental agent you can talk to, that checks every claim.
+>
+> 中文：来认识一下 HomeTruth：一个能跟你聊天、把每条说法都核对一遍的租房助手。
 
 ### 特点 1 · 直接说话或打字，像跟人聊天一样筛房（0:15–0:35）　UX + Demo
 
-**标题卡**：`1 · Just say what you need`
+**标题卡**：`1 · Just say what you need`（你需要什么，直接说）
 
 **画面**：首页，租客点 “Start talking” 直接说话（见下面“录制要求”：真语音），说的话实时变成文字，需求变成左侧六个标签。App 只追问缺的两样。答完后出现 “61 places pass the basics”，放大这行。
 
 **租客**：
 > Two bedrooms near UNSW. I've got a cat, and I want air con in the bedroom.
+>
+> 中文：要 UNSW 附近的两房。我养了一只猫，卧室要有空调。
 
 **App**：
 > Two quick things before I search: what's your weekly budget, and when do you need to move in?
+>
+> 中文：开查之前问两件事：你每周预算多少？什么时候要入住？
 
 **租客**：
 > Under 900, mid-November.
+>
+> 中文：900 以内，十一月中旬。
 
 **旁白**（“61 places pass the basics” 放大时）：
 > No forms, no filters. Talk or type in plain English. It only asks for what's missing, then filters every listing for you.
+>
+> 中文：不用填表，也不用点筛选。直接说或者打字，大白话就行。它只问缺的，然后替你把每套房筛一遍。
 
 ### 特点 2 · 七个来源同时查（0:35–0:46）　Technical + 赞助商
 
-**标题卡**：`2 · It checks seven sources at once`
+**标题卡**：`2 · It checks seven sources at once`（七个来源同时查）
 
 **画面**：放大左侧 Sources 栏，七行依次打勾，`7/7 · via Zetaris`；切到一行证据特写，`Zetaris query d8cdb976` 画框。
 
 **旁白**：
 > Listings, photos, floor plans, agent replies, rent records, transit, sunlight. Seven sources, queried at once through Zetaris, and every fact keeps its receipt.
+>
+> 中文：挂牌信息、照片、户型图、中介回复、租金记录、交通、日照。七个来源通过 Zetaris 同时查，每条事实都留着“收据”。
 
 ### 特点 3 · 每一行都写明依据（0:46–1:12）　Innovation + Explain Why
 
-**标题卡**：`3 · Every line shows what backs it`
+**标题卡**：`3 · Every line shows what backs it`（每一行都写明依据）
 
 **画面**：Muller Lane（Mascot，真房源，$900/周）的核对表。先放大四种标签的计数，再依次放大 Rent（展开 NSW 押金登记那条证据）→ Pets。
 
 **旁白**（全貌上）：
 > Every line gets one of four labels: supported, inferred, conflict or unknown. It never rounds a maybe up to a yes.
+>
+> 中文：每一行都标上四种标签之一：有依据、推断、冲突、未知。它从不把“可能”说成“是”。
 
 **App**（放大 Rent 时，网页实际台词）：
 > Rent is 900 a week, inside your 900 budget. That's 14 percent below the median of 1050 for new 2-bedroom leases in postcode 2020, from NSW Fair Trading bond records.
+>
+> 中文：租金每周 900，在你 900 的预算内。比邮编 2020 两房新租约的中位数 1050 低 14%，数据来自新州公平贸易署的押金登记。
 
-**屏幕字**（放大 Pets 时）：`Pets: the listing says "Pets allowed". Not in writing yet.`
+**屏幕字**（放大 Pets 时）：`Pets: the listing says "Pets allowed". Not in writing yet.`（宠物：挂牌写着“可以养宠物”，还没有书面确认）
 
 **App**（紧接着，网页实际台词；放大 “Best question for this agent” 那行）：
 > Best question for this agent: are pets allowed, in writing?
+>
+> 中文：最该问这位中介的一句：能养宠物吗？能书面确认吗？
 
 ### 特点 4 · 它会看照片和户型图（1:12–1:24）　Innovation + NVIDIA
 
-**标题卡**：`4 · It reads the photos`
+**标题卡**：`4 · It reads the photos`（它会看照片）
 
 **画面**：Day Avenue 的详情页，照片 → 往下滑到 Furniture 那张卡，放大那句 “stamped 'this advert has been digitally furnished', so the sofa, armchair, coffee table and side table won't be there”，卡上如果带 “Read by Nemotron VL” 标记就画框，没有就用屏幕字 `Read by NVIDIA Nemotron` 标出来。
 
 **旁白**：
 > NVIDIA Nemotron reads the listing photos and floor plans. Here it caught the fine print: the sofa, the armchair and the coffee table won't be there.
+>
+> 中文：NVIDIA Nemotron 会看挂牌照片和户型图。这里它看到了照片角上的小字：沙发、扶手椅和茶几，入住时都不会在。
 
 ### 特点 5 · 传一张喜欢的房间照片，按你的口味再挑（1:24–1:42）　UX + Innovation + NVIDIA
 
-**标题卡**：`5 · Find your style`
+**标题卡**：`5 · Find your style`（找到你喜欢的风格）
 
 **画面**（都按网页现在的样子）：
 1. 滑到 “Every place I can check.” 房源墙，点筛选栏里的 “Looks like this”，选一张自己喜欢的房间照片（浅色木地板、明亮、简洁那种），照片在画面角上小窗停 1 秒。
@@ -85,8 +107,10 @@
 
 **旁白**：
 > Can't describe your style? Show it a room you love. Nemotron reads the floor, the colours and the light, then scores every listing for the same feel, with what matches and what doesn't. It's a preference, so it never overrides your must-haves.
+>
+> 中文：说不清自己喜欢什么风格？给它看一间你喜欢的房间就行。Nemotron 读出地板、配色和光线，给每套房打一个“像不像”的分，并写出哪里像、哪里不像。这只是偏好，永远不会压过你的硬条件。
 
-**屏幕字**：卡片角上的分数出现时 `Style match`；最后 `Soft preference — never overrides your must-haves`
+**屏幕字**：卡片角上的分数出现时 `Style match`；最后 `Soft preference — never overrides your must-haves`（风格匹配；软偏好，不会压过你的硬条件）
 
 ### 赞助商大白话（1:42–1:54）　赞助商技术
 
@@ -101,15 +125,19 @@
 
 **旁白**：
 > In plain words: Zetaris asks the questions. NVIDIA Nemotron does the reading. And Meterless Nightshift, on this laptop, hands the language requests to Nemotron.
+>
+> 中文：说白了：Zetaris 负责提问，NVIDIA Nemotron 负责阅读，这台笔记本上的 Meterless Nightshift 负责把语言类的请求交给 Nemotron。
 
 ### 收尾（1:54–2:00）　Impact
 
-**画面**：回到开场那张照片，贴上 HomeTruth 的红色标签 `Furniture · digitally furnished · it won't be there`，淡到白底 logo + 网址。
+**画面**：回到开场那张照片，贴上 HomeTruth 的红色标签 `Furniture · digitally furnished · it won't be there`（家具 · 电脑摆的 · 入住时不会在），淡到白底 logo + 网址。
 
 **旁白**：
 > HomeTruth. Know what's true before you apply.
+>
+> 中文：HomeTruth。申请之前，先弄清什么是真的。
 
-**屏幕字**：`hometruth.codeprism.tech` · 小字 `Built with Zetaris · Meterless · NVIDIA Nemotron`
+**屏幕字**：`hometruth.codeprism.tech` · 小字 `Built with Zetaris · Meterless · NVIDIA Nemotron`（用 Zetaris、Meterless、NVIDIA Nemotron 做成）
 
 ---
 
