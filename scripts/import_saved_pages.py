@@ -17,6 +17,8 @@
   write     写房源 JSON（site、card_only = true、slides 只列打包了的照片）和照片原图 data/real/photos/<id>/NN.webp（realestate.com.au 是 R<id>）；
             已有的富数据（单套详情页抓的 9 套，没有 card_only）绝不被卡片数据覆盖
   all       parse → select → geocode → write
+  add       只补新卡片：--src 给的这批文件里能用、编号和地址都不在库里的卡片 → geocode → write（已在库里的不重挑）
+  details   realestate.com.au 单套详情页（REA property <编号>.mhtml）→ 富房源
 跑：.venv/bin/python scripts/import_saved_pages.py all [--domain 180 --rea 70] [--src ~/Downloads] [--dry]
 之后照常：scripts/domain_sample.py prepare / read / build（fetch 对这些房源什么也不下：照片已经在本地）。
 页面文件是外来数据：只用 email / re / html 解析，不执行任何东西。
@@ -338,7 +340,7 @@ def source_files(src: List[Path]) -> List[Path]:
     for p in src:
         p = p.expanduser()
         if p.is_dir():
-            out += [f for f in sorted(p.glob("*.mhtml")) if re.search(r"domain|realestate", f.name, re.I)]
+            out += [f for f in sorted(p.glob("*.mhtml")) if re.search(r"domain|realestate|^REA .*\bpage \d+", f.name, re.I)]  # 'REA Mascot exact oldest-first page 03'
         elif p.suffix.lower() in (".mhtml", ".mht"):
             out.append(p)
     return out
@@ -562,6 +564,31 @@ def write(cards: List[dict], blobs: Dict[Tuple[str, int, int], bytes], dry: bool
     return n
 
 
+def new_cards(cards: List[dict], have: Dict[str, str]) -> List[dict]:
+    """add 步：只补新的卡片——能用（usable）、编号和地址都不在已写好的房源里（两站、卡片和详情页都算）；同一批里同一地址只留打包照片多的那张。
+    已经在库里的那几百套一套都不动（不像 select 那样重新挑，免得演示集换人）。"""
+    have_ids = set(have.values())
+    seen, out, why = set(have), [], collections.Counter()
+    for c in sorted(cards, key=lambda c: -sum(1 for s in c["slides"] if s["embedded"])):
+        r = usable(c)
+        if r:
+            why[f"{c['site']}: {r}"] += 1
+            continue
+        if f"{c['site']}/{c['id']}" in have_ids:
+            why["already imported"] += 1
+            continue
+        u, num, st = split_address(c["line1"])
+        key = norm_key(u, num, st, c["suburb"])
+        if key in seen:
+            why["same address already in the list"] += 1
+            continue
+        seen.add(key)
+        out.append(c)
+    print(f"add: {len(out)} new", collections.Counter(c["site"] for c in out), "skipped:", dict(why))
+    print("     by suburb:", dict(collections.Counter(c["suburb"] for c in out)))
+    return out
+
+
 def ALL_KEYS() -> Dict[str, str]:
     """已经写好的全部房源（卡片和详情页、两个站）：地址键 → 'domain/<id>' / 'rea/<id>'。"""
     out = {}
@@ -583,7 +610,7 @@ def existing_keys() -> Dict[str, str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("step", choices=["parse", "select", "geocode", "write", "all", "details"])
+    ap.add_argument("step", choices=["parse", "select", "geocode", "write", "all", "details", "add"])
     ap.add_argument("--src", nargs="*", default=["~/Downloads"], help="mhtml 文件或文件夹")
     ap.add_argument("--domain", type=int, default=180)
     ap.add_argument("--rea", type=int, default=70)
@@ -604,6 +631,14 @@ def main() -> int:
         write(cards, blobs, a.dry)
         return 0
     cards, blobs = parse([Path(p) for p in a.src])
+    if a.step == "add":  # 只把这批文件里的新卡片补进库（--src 指定文件），已有的不重挑
+        picked = new_cards(cards, ALL_KEYS())
+        geocode(picked, a.dry)
+        with (OUT / "added.jsonl").open("a", encoding="utf-8") as f:
+            for c in picked:
+                f.write(json.dumps({k: v for k, v in c.items() if k != "_key"}, ensure_ascii=False) + "\n")
+        write(picked, blobs, a.dry)
+        return 0
     with (OUT / "cards.jsonl").open("w", encoding="utf-8") as f:
         for c in cards:
             f.write(json.dumps(c, ensure_ascii=False) + "\n")

@@ -116,6 +116,18 @@ class SavedPages(unittest.TestCase):
         self.assertIn(("rea", 901000001), ids)
         self.assertNotIn(("rea", 901000002), ids)
 
+    def test_add_only_takes_new_cards(self):
+        cards, _ = isp.parse([self.tmp])
+        have = {isp.norm_key("4", "12", "Birchwood Street", "Kensington"): "domain/19000001"}  # 这套已经在库里
+        got = isp.new_cards(cards, have)
+        self.assertEqual([(c["site"], c["id"]) for c in got], [("rea", 901000001)])  # 同地址的 REA 那张、没门牌 / 没周租 / 已出租的都不要
+        self.assertEqual(isp.new_cards(cards, dict(have, **{"x": "rea/901000001"})), [])
+        (self.tmp / "REA Alder exact oldest-first page 03.mhtml").write_text("x", encoding="utf-8")  # 首轮文件名不带 realestate，被漏掉过
+        (self.tmp / "REA property 902000009.mhtml").write_text("x", encoding="utf-8")                # 单套详情页走 details，不当搜索页
+        names = {f.name for f in isp.source_files([self.tmp])}
+        self.assertIn("REA Alder exact oldest-first page 03.mhtml", names)
+        self.assertNotIn("REA property 902000009.mhtml", names)
+
     def test_listing_json_is_card_only_and_honest(self):
         cards, _ = isp.parse([self.tmp])
         c = next(c for c in cards if c["id"] == 19000001)

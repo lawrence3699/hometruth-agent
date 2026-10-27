@@ -42,3 +42,9 @@
 - **联系方式打码**：描述里中介留的手机号、微信 / WhatsApp 号、邮箱换成 `[contact removed]`（演示站公开，不转贴个人联系方式；中介公司名照留）。
 - **同一地址两条挂牌**（Kent Rd 的 L6A / L6B 各两条，价格不同）：都留，导入时打印提醒。
 - **结果**：147 套详情页房源（`data/real/rea/<id>.json`，没有 card_only，`saved_page` 记来源文件；其中 2 套原来是搜索卡片，照片换成详情页的并重读），共 451 套真房源。
+
+## 10-27 晚：补上首轮漏掉的 28 页 realestate.com.au 搜索页（超亮：“把第一轮漏掉的 28 页 REA oldest-first 搜索页也导进来”）
+
+- **为什么漏了**：首轮按文件名挑搜索页（要带 domain / realestate），超亮另存的 `REA … oldest-first page NN.mhtml` 不带，被跳过。现在文件名也认 `REA … page NN`。
+- **怎么补**：`import_saved_pages.py add --src ~/Downloads/REA*oldest-first*.mhtml`——只补新的：能用、编号和地址都不在库里（两站、卡片和详情页都算）。已经在库里的几百套一套不动，不像 `all` 那样重新挑。
+- **结果**：28 页 657 张卡片，能补的 32 套（Mascot 14、Kingsford 5、Zetland 3 等）；其余：394 张页面没打包照片、195 张没门牌号、19 张已在库里、5 张同地址、8 张超过 4 卧、3 张没卧室数、1 张没周租。坐标全查到（门牌级 9、街道级 23）。真房源共 483 套。
