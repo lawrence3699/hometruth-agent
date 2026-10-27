@@ -154,7 +154,7 @@
 |---|---|
 | Day Avenue 照片写着 “this advert has been digitally furnished” | 真挂牌照片；Nemotron VL 读出，矩阵 L-D14397815 的 C2 |
 | Muller Lane 比邮编 2020 的两房新租约中位数 1050 低 14% | NSW Fair Trading 押金登记（CC BY 4.0），data/public/nsw_bond_rents.csv |
-| 中介说 no pets → Pets 变 Conflict → 掉出前三，113 Sutherland Street 补进 | 10-27 19:00 本机接口实测（修完 4c97403 的行为） |
+| 中介说 no pets → Pets 变 Conflict → 掉出前三，113 Sutherland Street 补进 | 10-27 19:50 本机接口实测（修完 4c97403 的行为） |
 | 七个来源，每个是一条实时 Zetaris 查询 | 每次开查发 7 条 SQL；证据行带查询编号（934e99c） |
 | Nemotron 读需求、照片、户型图 | 需求解析 Nemotron 3.5 Lightning；照片和户型图 Nemotron 3.5 Super VL |
 | Meterless Nightshift serves the model | 只在 Mac 上成立（盒子上没有 Nightshift，直连 NVIDIA）。**所以录屏要在 Mac 上跑**；照片读取是直连 NVIDIA，所以只说 “serves the model”，不说 “every call” |
